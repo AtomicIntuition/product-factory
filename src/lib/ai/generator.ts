@@ -63,7 +63,7 @@ Requirements for the product:
 3. Content: Create a prompt pack with 5-6 themed sections. Each section should have 5-7 specific, ready-to-use prompts (aim for 30-40 total). Each prompt should be 1-3 sentences — specific and actionable, not padded with filler.
 4. Tags: 5-8 relevant tags for Gumroad discoverability.
 5. Price: Set in cents. Should be competitive based on the opportunity data. Price appropriately for 30-40 prompts — typically $5-12.
-6. Thumbnail prompt: A DALL-E/Midjourney prompt for generating an attractive product thumbnail.
+6. Thumbnail prompt: A prompt for generating a square (1:1) product cover image. Design it as a digital product thumbnail — bold text overlay with the product title, clean modern background, vibrant colors. Think Gumroad product card, NOT a landscape photo. Always specify "square format, 1:1 aspect ratio" in the prompt.
 
 CRITICAL RULES FOR THE DESCRIPTION:
 - The description MUST accurately reflect the ACTUAL content you generate. Do NOT inflate numbers.

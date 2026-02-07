@@ -4,10 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:all": "npx concurrently \"npm run dev\" \"npm run dev:backend\"",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "typecheck:backend": "cd backend && npm run typecheck"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.73.0",

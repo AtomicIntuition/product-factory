@@ -1,73 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { after } from "next/server";
-import { z } from "zod";
 import { getLatestPipelineRuns, deletePipelineRun } from "@/lib/supabase/queries";
-import {
-  executeResearch,
-  executeGeneration,
-  executePostGeneration,
-  executePublish,
-} from "@/lib/pipeline/orchestrator";
-import type { Opportunity } from "@/types";
 
-// Allow long-running pipeline operations (Vercel hobby plan max: 300s)
-export const maxDuration = 300;
-
-const OpportunitySchema = z.object({
-  id: z.string(),
-  niche: z.string(),
-  product_type: z.string(),
-  description: z.string(),
-  demand_score: z.number(),
-  competition_score: z.number(),
-  gap_score: z.number(),
-  feasibility_score: z.number(),
-  composite_score: z.number(),
-  rationale: z.string(),
-  competitor_prices: z.array(z.number()),
-  suggested_price_cents: z.number(),
-  built: z.boolean(),
-});
-
-const PipelineActionSchema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("research"),
-    params: z.object({
-      niche: z.string().optional(),
-      seedUrls: z.array(z.string().url()).optional(),
-    }),
-  }),
-  z.object({
-    action: z.literal("generate"),
-    params: z.object({
-      opportunityId: z.string(),
-      reportId: z.string(),
-      opportunity: OpportunitySchema,
-    }),
-  }),
-  z.object({
-    action: z.literal("post_generate"),
-    params: z.object({
-      productId: z.string(),
-    }),
-  }),
-  z.object({
-    action: z.literal("publish"),
-    params: z.object({
-      productId: z.string(),
-    }),
-  }),
-]);
-
-function getBaseUrl(request: NextRequest): string {
-  // On Vercel, use the deployment URL. Locally, use the request origin.
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
-  return new URL(request.url).origin;
-}
-
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   try {
     const runs = await getLatestPipelineRuns();
     return NextResponse.json(runs);
@@ -77,7 +11,7 @@ export async function GET() {
   }
 }
 
-export async function DELETE(request: NextRequest) {
+export async function DELETE(request: NextRequest): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
@@ -92,71 +26,34 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const backendUrl = process.env.BACKEND_URL;
+  const backendSecret = process.env.BACKEND_SECRET;
+
+  if (!backendUrl || !backendSecret) {
+    return NextResponse.json(
+      { error: "Backend not configured (BACKEND_URL or BACKEND_SECRET missing)" },
+      { status: 500 },
+    );
+  }
+
   try {
     const body = await request.json();
-    const parsed = PipelineActionSchema.safeParse(body);
 
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid request body", details: parsed.error.flatten() },
-        { status: 400 },
-      );
-    }
+    const response = await fetch(`${backendUrl}/api/pipeline`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-backend-secret": backendSecret,
+      },
+      body: JSON.stringify(body),
+    });
 
-    const { action, params } = parsed.data;
-    const baseUrl = getBaseUrl(request);
-    let result: unknown;
-
-    switch (action) {
-      case "research":
-        result = await executeResearch(params);
-        break;
-
-      case "generate":
-        // Phase 1: Generate product content (runs in after(), gets up to 300s)
-        // When done, automatically triggers Phase 2 (post_generate) as a new request
-        after(
-          executeGeneration(
-            params.opportunityId,
-            params.reportId,
-            params.opportunity as Opportunity,
-          )
-            .then(({ productId }) => {
-              // Fire off post-generation as a NEW serverless function invocation
-              console.log(`[pipeline] Generation done, triggering post_generate for ${productId}`);
-              return fetch(`${baseUrl}/api/pipeline`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  action: "post_generate",
-                  params: { productId },
-                }),
-              });
-            })
-            .catch((err) => {
-              console.error("[pipeline] Generation failed:", err);
-            }),
-        );
-        return NextResponse.json({ status: "started" }, { status: 202 });
-
-      case "post_generate":
-        // Phase 2: QA + lessons + thumbnail (runs in after(), gets its own 300s)
-        after(
-          executePostGeneration(params.productId).catch((err) => {
-            console.error("[pipeline] Post-generation failed:", err);
-          }),
-        );
-        return NextResponse.json({ status: "started" }, { status: 202 });
-
-      case "publish":
-        result = await executePublish(params.productId);
-        break;
-    }
-
-    return NextResponse.json(result, { status: 201 });
+    const data = await response.json();
+    return NextResponse.json(data, { status: response.status });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[pipeline proxy] Failed to reach backend:", message);
+    return NextResponse.json({ error: `Backend unreachable: ${message}` }, { status: 502 });
   }
 }
