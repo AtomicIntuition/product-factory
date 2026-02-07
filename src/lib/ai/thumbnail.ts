@@ -8,27 +8,26 @@ export async function generateThumbnail(prompt: string): Promise<Buffer> {
     throw new Error("OPENAI_API_KEY not configured — cannot generate thumbnail");
   }
 
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = new OpenAI({
+    apiKey: env.OPENAI_API_KEY,
+    timeout: 120_000, // 2 minute timeout for image generation
+  });
+
+  console.log(`[thumbnail] Calling gpt-image-1 with prompt: ${prompt.slice(0, 80)}...`);
 
   const response = await client.images.generate({
-    model: "dall-e-3",
+    model: "gpt-image-1",
     prompt,
     n: 1,
     size: "1024x1024",
-    response_format: "url",
+    quality: "medium",
   });
 
-  const imageUrl = response.data?.[0]?.url;
-  if (!imageUrl) {
-    throw new Error("DALL-E did not return an image URL");
+  const b64 = response.data?.[0]?.b64_json;
+  if (!b64) {
+    throw new Error("gpt-image-1 did not return image data (b64_json is empty)");
   }
 
-  // Download image to Buffer
-  const imageRes = await fetch(imageUrl);
-  if (!imageRes.ok) {
-    throw new Error(`Failed to download thumbnail image: ${imageRes.status}`);
-  }
-
-  const arrayBuffer = await imageRes.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  console.log(`[thumbnail] Got image data, ${b64.length} chars base64`);
+  return Buffer.from(b64, "base64");
 }

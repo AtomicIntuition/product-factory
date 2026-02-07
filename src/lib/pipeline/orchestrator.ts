@@ -196,21 +196,30 @@ export async function executeGeneration(
     const env = getEnv();
     if (env.OPENAI_API_KEY && generated.thumbnail_prompt) {
       try {
-        console.log(`[pipeline] Generating thumbnail with DALL-E...`);
+        console.log(`[pipeline] Generating thumbnail with DALL-E for product ${product.id}...`);
+        console.log(`[pipeline] Thumbnail prompt: ${generated.thumbnail_prompt.slice(0, 100)}...`);
         const thumbnailBuffer = await generateThumbnail(generated.thumbnail_prompt);
+        console.log(`[pipeline] DALL-E returned ${thumbnailBuffer.length} bytes, uploading...`);
         const thumbnailUrl = await uploadFile(
           `products/${product.id}/thumbnail.png`,
           thumbnailBuffer,
           "image/png",
         );
         await updateProduct(product.id, { thumbnail_url: thumbnailUrl });
-        console.log(`[pipeline] Thumbnail uploaded: ${thumbnailUrl}`);
+        console.log(`[pipeline] Thumbnail saved to product: ${thumbnailUrl}`);
       } catch (thumbError) {
-        // Non-fatal: product is still reviewable without thumbnail
-        console.error(`[pipeline] Thumbnail generation failed, continuing without:`, thumbError);
+        // Non-fatal but log the full error so we can debug
+        const errMsg = thumbError instanceof Error ? thumbError.message : String(thumbError);
+        const errStack = thumbError instanceof Error ? thumbError.stack : "";
+        console.error(`[pipeline] Thumbnail generation FAILED: ${errMsg}`);
+        console.error(`[pipeline] Thumbnail error stack: ${errStack}`);
+        // Store the error in the product metadata so it's visible in the dashboard
+        await updatePipelineRun(pipelineRun.id, {
+          metadata: { ...pipelineRun.metadata, thumbnail_error: errMsg },
+        }).catch(() => {});
       }
     } else {
-      console.log(`[pipeline] Skipping thumbnail (no OPENAI_API_KEY or thumbnail_prompt)`);
+      console.log(`[pipeline] Skipping thumbnail — OPENAI_API_KEY: ${env.OPENAI_API_KEY ? "set" : "NOT SET"}, thumbnail_prompt: ${generated.thumbnail_prompt ? "yes" : "NO"}`);
     }
 
     // Update pipeline run
