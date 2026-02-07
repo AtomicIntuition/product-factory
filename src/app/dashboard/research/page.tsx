@@ -344,7 +344,15 @@ export default function ResearchPage(): React.ReactElement {
                     </button>
                   </div>
 
-                  {/* Expanded Opportunities Table */}
+                  {/* Expanded: Summary + Opportunities Table */}
+                  {isExpanded && (
+                    <div className="border-t border-gray-800">
+                      <div className="px-5 py-4 bg-gray-800/30">
+                        <p className="text-sm text-gray-400 font-medium mb-1">Summary</p>
+                        <p className="text-sm text-gray-300 whitespace-pre-wrap">{report.summary}</p>
+                      </div>
+                    </div>
+                  )}
                   {isExpanded && (
                     <div className="border-t border-gray-800 overflow-x-auto">
                       {report.opportunities.length === 0 ? (
