@@ -87,5 +87,6 @@ tests/                      # Test files
 - ALWAYS check `stop_reason` on Claude API responses to detect truncation
 - ALWAYS use streaming (`onProgress` callback) for generation to track progress
 - NEVER use fire-and-forget on Vercel without `after()` — the function gets killed
-- Keep generation output under 16384 tokens (5-10 prompts/section, 40-60 total)
+- Keep generation output under 8192 tokens (5-7 prompts/section, 30-40 total)
+- Generation and QA run in separate serverless functions (each gets 300s on Vercel)
 - Write tests for pipeline logic — it is the core business logic

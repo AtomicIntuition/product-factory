@@ -60,9 +60,9 @@ export async function generateProduct(params: {
 Requirements for the product:
 1. Title: SEO-optimized for Gumroad search. Include the key search terms buyers would use. Under 80 characters.
 2. Description: Benefit-driven and scannable. Use bullet points. Lead with the value proposition. Include what the buyer gets, who it's for, and why it's better than alternatives.
-3. Content: Create a comprehensive prompt pack with 5-8 themed sections. Each section should have 5-10 specific, detailed, ready-to-use prompts (aim for 40-60 total). Prompts must be actionable and specific — not generic filler.
+3. Content: Create a prompt pack with 5-6 themed sections. Each section should have 5-7 specific, ready-to-use prompts (aim for 30-40 total). Each prompt should be 1-3 sentences — specific and actionable, not padded with filler.
 4. Tags: 5-8 relevant tags for Gumroad discoverability.
-5. Price: Set in cents. Should be competitive based on the opportunity data. Price appropriately for 40-60 prompts — typically $5-15.
+5. Price: Set in cents. Should be competitive based on the opportunity data. Price appropriately for 30-40 prompts — typically $5-12.
 6. Thumbnail prompt: A DALL-E/Midjourney prompt for generating an attractive product thumbnail.
 
 CRITICAL RULES FOR THE DESCRIPTION:
@@ -70,7 +70,9 @@ CRITICAL RULES FOR THE DESCRIPTION:
 - Count your prompts as you write them. The number in the description MUST match total_prompts exactly.
 - Do NOT promise bonus materials, PDFs, guides, matrices, cheat sheets, or any deliverables beyond the prompt pack itself. The buyer receives ONLY the prompts you write in the sections array.
 - Do NOT claim per-section counts that exceed what you actually wrote. If a section has 8 prompts, say "8 prompts" not "80 prompts."
-- Honesty builds trust and prevents refunds. A well-described 50-prompt pack at $9 outsells a misleading "800+ prompt" pack at $29 that gets refunded.${lessonsBlock}
+- Honesty builds trust and prevents refunds. A well-described 35-prompt pack at $7 outsells a misleading "800+ prompt" pack at $29 that gets refunded.
+
+IMPORTANT: Be concise. Each prompt should be 1-3 sentences. Do not pad prompts with unnecessary detail. Keep the JSON output compact.${lessonsBlock}
 
 Return ONLY valid JSON with this exact structure:
 {
@@ -110,7 +112,7 @@ Create a comprehensive, genuinely valuable product that buyers would recommend t
     model: "sonnet",
     system,
     prompt,
-    maxTokens: 16384,
+    maxTokens: 8192,
     onProgress: params.onProgress,
   });
 }

@@ -21,6 +21,14 @@ import { uploadFile } from "@/lib/supabase/storage";
 import { getEnv } from "@/config/env";
 import type { Opportunity, GumroadProductData } from "@/types";
 
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error) {
+    return String((error as { message: unknown }).message);
+  }
+  return JSON.stringify(error);
+}
+
 export async function executeResearch(params: {
   niche?: string;
   seedUrls?: string[];
@@ -87,7 +95,7 @@ export async function executeResearch(params: {
       completed_at: new Date().toISOString(),
       metadata: {
         ...pipelineRun.metadata,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       },
     });
     throw error;
@@ -169,7 +177,7 @@ export async function executeGeneration(
       completed_at: new Date().toISOString(),
       metadata: {
         ...pipelineRun.metadata,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       },
     });
     throw error;
@@ -310,7 +318,7 @@ export async function executePostGeneration(
       completed_at: new Date().toISOString(),
       metadata: {
         ...pipelineRun.metadata,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       },
     });
     throw error;
@@ -453,7 +461,7 @@ export async function executePublish(
       completed_at: new Date().toISOString(),
       metadata: {
         ...pipelineRun.metadata,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       },
     });
 
