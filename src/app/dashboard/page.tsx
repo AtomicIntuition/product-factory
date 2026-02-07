@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import type { DashboardSummary, PipelineRun } from "@/types";
 
@@ -13,7 +13,15 @@ function formatDate(iso: string): string {
 }
 
 function formatDuration(start: string, end: string | null): string {
-  if (!end) return "Running...";
+  if (!end) {
+    // Live elapsed time for running tasks
+    const ms = Date.now() - new Date(start).getTime();
+    const secs = Math.floor(ms / 1000);
+    if (secs < 60) return `${secs}s elapsed`;
+    const mins = Math.floor(secs / 60);
+    const remainSecs = secs % 60;
+    return `${mins}m ${remainSecs}s elapsed`;
+  }
   const ms = new Date(end).getTime() - new Date(start).getTime();
   const secs = Math.floor(ms / 1000);
   if (secs < 60) return `${secs}s`;
@@ -42,32 +50,62 @@ export default function DashboardPage(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [researchLoading, setResearchLoading] = useState(false);
   const [deletingRunIds, setDeletingRunIds] = useState<Set<string>>(new Set());
+  const [, setTick] = useState(0);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const [summaryRes, pipelineRes] = await Promise.all([
-          fetch("/api/analytics/summary"),
-          fetch("/api/pipeline"),
-        ]);
+  const hasRunning = pipelineRuns.some((r) => r.status === "running");
 
-        if (!summaryRes.ok) throw new Error("Failed to fetch summary");
-        if (!pipelineRes.ok) throw new Error("Failed to fetch pipeline runs");
+  const fetchData = useCallback(async (isInitial = false) => {
+    try {
+      const [summaryRes, pipelineRes] = await Promise.all([
+        fetch("/api/analytics/summary"),
+        fetch("/api/pipeline"),
+      ]);
 
-        const summaryData = await summaryRes.json();
-        const pipelineData = await pipelineRes.json();
+      if (!summaryRes.ok) throw new Error("Failed to fetch summary");
+      if (!pipelineRes.ok) throw new Error("Failed to fetch pipeline runs");
 
-        setSummary(summaryData);
-        setPipelineRuns(pipelineData);
-      } catch (err) {
+      setSummary(await summaryRes.json());
+      setPipelineRuns(await pipelineRes.json());
+    } catch (err) {
+      if (isInitial) {
         setError(err instanceof Error ? err.message : "An error occurred");
-      } finally {
-        setLoading(false);
       }
+    } finally {
+      if (isInitial) setLoading(false);
+    }
+  }, []);
+
+  // Initial fetch
+  useEffect(() => {
+    fetchData(true);
+  }, [fetchData]);
+
+  // Poll every 5s while any run is "running", plus tick every second for live elapsed time
+  useEffect(() => {
+    if (!hasRunning) {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+      return;
     }
 
-    fetchData();
-  }, []);
+    // Poll API every 5 seconds
+    pollRef.current = setInterval(() => {
+      fetchData();
+    }, 5000);
+
+    // Tick every second to update elapsed time display
+    const tickInterval = setInterval(() => {
+      setTick((t) => t + 1);
+    }, 1000);
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      clearInterval(tickInterval);
+    };
+  }, [hasRunning, fetchData]);
 
   async function handleRunResearch() {
     setResearchLoading(true);
@@ -78,11 +116,7 @@ export default function DashboardPage(): React.ReactElement {
         body: JSON.stringify({ action: "research", params: {} }),
       });
       if (!res.ok) throw new Error("Failed to start research");
-
-      const pipelineRes = await fetch("/api/pipeline");
-      if (pipelineRes.ok) {
-        setPipelineRuns(await pipelineRes.json());
-      }
+      await fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to run research");
     } finally {
@@ -198,9 +232,20 @@ export default function DashboardPage(): React.ReactElement {
 
       {/* Recent Pipeline Activity */}
       <div>
-        <h2 className="text-lg font-semibold text-white mb-4">
-          Recent Pipeline Activity
-        </h2>
+        <div className="flex items-center gap-3 mb-4">
+          <h2 className="text-lg font-semibold text-white">
+            Recent Pipeline Activity
+          </h2>
+          {hasRunning && (
+            <span className="flex items-center gap-1.5 text-xs text-yellow-400">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-400" />
+              </span>
+              Auto-refreshing
+            </span>
+          )}
+        </div>
         {pipelineRuns.length === 0 ? (
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-8 text-center text-gray-500">
             No pipeline activity yet. Run your first research to get started.
@@ -237,6 +282,27 @@ export default function DashboardPage(): React.ReactElement {
                       {formatDate(run.started_at)}
                     </td>
                     <td className="px-4 py-3 text-gray-400">
+                      {run.status === "running" && (
+                        <svg
+                          className="inline-block animate-spin h-3 w-3 mr-1.5 text-yellow-400"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                          />
+                        </svg>
+                      )}
                       {formatDuration(run.started_at, run.completed_at)}
                     </td>
                     <td className="px-4 py-3">
