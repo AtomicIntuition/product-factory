@@ -13,21 +13,20 @@ function formatDate(iso: string): string {
 }
 
 function formatDuration(start: string, end: string | null): string {
-  if (!end) {
-    // Live elapsed time for running tasks
-    const ms = Date.now() - new Date(start).getTime();
-    const secs = Math.floor(ms / 1000);
-    if (secs < 60) return `${secs}s elapsed`;
-    const mins = Math.floor(secs / 60);
-    const remainSecs = secs % 60;
-    return `${mins}m ${remainSecs}s elapsed`;
-  }
-  const ms = new Date(end).getTime() - new Date(start).getTime();
+  const ms = end
+    ? new Date(end).getTime() - new Date(start).getTime()
+    : Date.now() - new Date(start).getTime();
   const secs = Math.floor(ms / 1000);
   if (secs < 60) return `${secs}s`;
   const mins = Math.floor(secs / 60);
   const remainSecs = secs % 60;
   return `${mins}m ${remainSecs}s`;
+}
+
+function getProgress(run: PipelineRun): number | null {
+  const meta = run.metadata as Record<string, unknown>;
+  if (typeof meta?.progress === "number") return meta.progress;
+  return null;
 }
 
 function statusColor(status: string): string {
@@ -282,28 +281,44 @@ export default function DashboardPage(): React.ReactElement {
                       {formatDate(run.started_at)}
                     </td>
                     <td className="px-4 py-3 text-gray-400">
-                      {run.status === "running" && (
-                        <svg
-                          className="inline-block animate-spin h-3 w-3 mr-1.5 text-yellow-400"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                        >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          />
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                          />
-                        </svg>
+                      {run.status === "running" ? (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <svg
+                              className="animate-spin h-3 w-3 text-yellow-400 shrink-0"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                              />
+                            </svg>
+                            <span>
+                              {getProgress(run) !== null
+                                ? `${getProgress(run)}% complete`
+                                : "starting..."}
+                            </span>
+                          </div>
+                          <div className="w-32 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-yellow-400 rounded-full transition-all duration-500"
+                              style={{ width: `${getProgress(run) ?? 0}%` }}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        formatDuration(run.started_at, run.completed_at)
                       )}
-                      {formatDuration(run.started_at, run.completed_at)}
                     </td>
                     <td className="px-4 py-3">
                       <button

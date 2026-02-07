@@ -24,11 +24,19 @@ export async function promptClaude<T>(params: {
   system: string;
   prompt: string;
   maxTokens?: number;
+  onProgress?: (pct: number) => void;
 }): Promise<T> {
   const client = getAnthropicClient();
+  const maxTokens = params.maxTokens || 4096;
+
+  // Use streaming if a progress callback is provided
+  if (params.onProgress) {
+    return streamClaude<T>({ ...params, maxTokens });
+  }
+
   const response = await client.messages.create({
     model: MODEL_MAP[params.model],
-    max_tokens: params.maxTokens || 4096,
+    max_tokens: maxTokens,
     system: params.system,
     messages: [{ role: "user", content: params.prompt }],
   });
@@ -36,7 +44,7 @@ export async function promptClaude<T>(params: {
   // Detect truncated responses (maxTokens hit)
   if (response.stop_reason === "max_tokens") {
     throw new Error(
-      `Claude response was truncated (hit max_tokens limit of ${params.maxTokens || 4096}). Increase maxTokens or reduce expected output size.`,
+      `Claude response was truncated (hit max_tokens limit of ${maxTokens}). Increase maxTokens or reduce expected output size.`,
     );
   }
 
@@ -45,8 +53,56 @@ export async function promptClaude<T>(params: {
     throw new Error("No text response from Claude");
   }
 
-  // Extract JSON from the response (handle markdown code blocks)
-  let jsonStr = textBlock.text.trim();
+  return parseJsonResponse<T>(textBlock.text);
+}
+
+async function streamClaude<T>(params: {
+  model: ModelTier;
+  system: string;
+  prompt: string;
+  maxTokens: number;
+  onProgress?: (pct: number) => void;
+}): Promise<T> {
+  const client = getAnthropicClient();
+  let fullText = "";
+  let tokenCount = 0;
+  let lastReportedPct = 0;
+
+  const stream = client.messages.stream({
+    model: MODEL_MAP[params.model],
+    max_tokens: params.maxTokens,
+    system: params.system,
+    messages: [{ role: "user", content: params.prompt }],
+  });
+
+  stream.on("text", (text) => {
+    fullText += text;
+    // Approximate token count (1 token ≈ 4 chars for English text)
+    tokenCount = Math.floor(fullText.length / 4);
+    const pct = Math.min(99, Math.floor((tokenCount / params.maxTokens) * 100));
+    if (pct > lastReportedPct && params.onProgress) {
+      lastReportedPct = pct;
+      params.onProgress(pct);
+    }
+  });
+
+  const finalMessage = await stream.finalMessage();
+
+  if (finalMessage.stop_reason === "max_tokens") {
+    throw new Error(
+      `Claude response was truncated (hit max_tokens limit of ${params.maxTokens}). Increase maxTokens or reduce expected output size.`,
+    );
+  }
+
+  if (params.onProgress) {
+    params.onProgress(100);
+  }
+
+  return parseJsonResponse<T>(fullText);
+}
+
+function parseJsonResponse<T>(text: string): T {
+  let jsonStr = text.trim();
 
   // Try multiple fence patterns
   const fenceMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
@@ -72,6 +128,6 @@ export async function promptClaude<T>(params: {
   try {
     return JSON.parse(jsonStr) as T;
   } catch {
-    throw new Error(`Failed to parse Claude response as JSON: ${textBlock.text.slice(0, 500)}`);
+    throw new Error(`Failed to parse Claude response as JSON: ${text.slice(0, 500)}`);
   }
 }

@@ -102,11 +102,21 @@ export async function executeGeneration(
   });
 
   try {
-    // Generate product (QA evaluation disabled for now — manual review instead)
+    // Generate product with streaming progress
     console.log(`[pipeline] Generating product for opportunity: ${opportunity.niche}`);
+    let lastSavedPct = 0;
     const lastGenerated = await generateProduct({
       opportunity,
       attempt: 1,
+      onProgress: (pct) => {
+        // Throttle DB writes: save every 5% change
+        if (pct - lastSavedPct >= 5 || pct === 100) {
+          lastSavedPct = pct;
+          updatePipelineRun(pipelineRun.id, {
+            metadata: { ...pipelineRun.metadata, progress: pct },
+          }).catch(() => {});
+        }
+      },
     });
     console.log(`[pipeline] Generated product: "${lastGenerated.title}" (${lastGenerated.content.total_prompts} prompts)`);
 

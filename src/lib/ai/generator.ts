@@ -27,6 +27,7 @@ export async function generateProduct(params: {
   opportunity: Opportunity;
   attempt: number;
   previousFeedback?: string;
+  onProgress?: (pct: number) => void;
 }): Promise<GeneratedProduct> {
   const feedbackContext = params.previousFeedback
     ? `\n\nIMPORTANT — PREVIOUS ATTEMPT FEEDBACK (attempt ${params.attempt - 1}):\nThe previous version of this product failed quality review. Here is the specific feedback you MUST address:\n${params.previousFeedback}\n\nFix every issue mentioned above. Do not repeat the same mistakes.`
@@ -81,5 +82,6 @@ Create a comprehensive, genuinely valuable product that buyers would recommend t
     system,
     prompt,
     maxTokens: 16384,
+    onProgress: params.onProgress,
   });
 }

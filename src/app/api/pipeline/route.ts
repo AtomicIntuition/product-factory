@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { z } from "zod";
 import { getLatestPipelineRuns, deletePipelineRun } from "@/lib/supabase/queries";
 import {
@@ -96,15 +97,18 @@ export async function POST(request: NextRequest) {
         result = await executeResearch(params);
         break;
       case "generate":
-        // Fire-and-forget: return immediately, run generation in background.
-        // The orchestrator updates pipeline_runs status in DB on completion/failure.
-        executeGeneration(
-          params.opportunityId,
-          params.reportId,
-          params.opportunity as Opportunity,
-        ).catch((err) => {
-          console.error("[pipeline] Background generation failed:", err);
-        });
+        // Use after() to keep the serverless function alive on Vercel
+        // while returning an immediate response to the client.
+        // Progress is tracked via streaming and written to pipeline_runs metadata.
+        after(
+          executeGeneration(
+            params.opportunityId,
+            params.reportId,
+            params.opportunity as Opportunity,
+          ).catch((err) => {
+            console.error("[pipeline] Generation failed:", err);
+          }),
+        );
         return NextResponse.json({ status: "started" }, { status: 202 });
       case "publish":
         result = await executePublish(params.productId);
