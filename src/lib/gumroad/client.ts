@@ -54,7 +54,13 @@ async function request<T = unknown>(
       continue;
     }
 
-    const json = await res.json() as GumroadResponse<T>;
+    const text = await res.text();
+    let json: GumroadResponse<T>;
+    try {
+      json = JSON.parse(text) as GumroadResponse<T>;
+    } catch {
+      throw new Error(`Gumroad API returned non-JSON (HTTP ${res.status}): ${text.slice(0, 200)}`);
+    }
     if (!json.success) {
       throw new Error(`Gumroad API error: ${json.message || JSON.stringify(json)}`);
     }

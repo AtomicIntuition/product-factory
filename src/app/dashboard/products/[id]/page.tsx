@@ -120,9 +120,11 @@ export default function ProductDetailPage({
     setActionLoading(true);
     setError(null);
     try {
-      const params: Record<string, unknown> = { product_id: id };
+      const params: Record<string, unknown> = { productId: id };
       if (action === "generate" && product) {
-        params.opportunity_id = product.opportunity_id;
+        params.opportunityId = product.opportunity_id;
+        params.reportId = product.report_id;
+        params.opportunity = product; // backend will validate what it needs
       }
       const res = await fetch("/api/pipeline", {
         method: "POST",
