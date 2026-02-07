@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getLatestPipelineRuns } from "@/lib/supabase/queries";
+import { getLatestPipelineRuns, deletePipelineRun } from "@/lib/supabase/queries";
 import {
   executeResearch,
   executeGeneration,
@@ -55,6 +55,21 @@ export async function GET() {
   try {
     const runs = await getLatestPipelineRuns();
     return NextResponse.json(runs);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+    if (!id) {
+      return NextResponse.json({ error: "Missing id parameter" }, { status: 400 });
+    }
+    await deletePipelineRun(id);
+    return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

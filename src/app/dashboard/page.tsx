@@ -41,6 +41,7 @@ export default function DashboardPage(): React.ReactElement {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [researchLoading, setResearchLoading] = useState(false);
+  const [deletingRunIds, setDeletingRunIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     async function fetchData() {
@@ -86,6 +87,23 @@ export default function DashboardPage(): React.ReactElement {
       setError(err instanceof Error ? err.message : "Failed to run research");
     } finally {
       setResearchLoading(false);
+    }
+  }
+
+  async function handleDeleteRun(id: string) {
+    setDeletingRunIds((prev) => new Set(prev).add(id));
+    try {
+      const res = await fetch(`/api/pipeline?id=${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete");
+      setPipelineRuns((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete run");
+    } finally {
+      setDeletingRunIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   }
 
@@ -196,6 +214,7 @@ export default function DashboardPage(): React.ReactElement {
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Started</th>
                   <th className="px-4 py-3 font-medium">Duration</th>
+                  <th className="px-4 py-3 font-medium"></th>
                 </tr>
               </thead>
               <tbody>
@@ -219,6 +238,15 @@ export default function DashboardPage(): React.ReactElement {
                     </td>
                     <td className="px-4 py-3 text-gray-400">
                       {formatDuration(run.started_at, run.completed_at)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => handleDeleteRun(run.id)}
+                        disabled={deletingRunIds.has(run.id)}
+                        className="text-gray-500 hover:text-red-400 disabled:opacity-40 transition-colors text-xs"
+                      >
+                        {deletingRunIds.has(run.id) ? "..." : "Delete"}
+                      </button>
                     </td>
                   </tr>
                 ))}

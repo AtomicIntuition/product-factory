@@ -347,6 +347,25 @@ export default function ProductDetailPage({
             {actionLoading ? "Regenerating..." : "Retry Generation"}
           </button>
         )}
+
+        <button
+          onClick={async () => {
+            if (!confirm("Delete this product? This cannot be undone.")) return;
+            setActionLoading(true);
+            try {
+              const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
+              if (!res.ok) throw new Error("Failed to delete product");
+              router.push("/dashboard/products");
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Delete failed");
+              setActionLoading(false);
+            }
+          }}
+          disabled={actionLoading}
+          className="px-5 py-2.5 bg-red-600/20 hover:bg-red-600/40 border border-red-700 disabled:opacity-60 text-red-400 font-medium rounded-lg transition-colors text-sm"
+        >
+          {actionLoading ? "Deleting..." : "Delete Product"}
+        </button>
       </div>
 
       {/* QA Results */}

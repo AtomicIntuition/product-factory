@@ -135,6 +135,11 @@ export async function getLatestPipelineRuns(): Promise<PipelineRun[]> {
   return data;
 }
 
+export async function deletePipelineRun(id: string): Promise<void> {
+  const { error } = await db().from("pipeline_runs").delete().eq("id", id);
+  if (error) throw error;
+}
+
 // --- Dashboard Summary ---
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
