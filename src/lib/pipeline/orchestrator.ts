@@ -7,11 +7,13 @@ import {
   getProductById,
   insertPipelineRun,
   updatePipelineRun,
+  insertLesson,
 } from "@/lib/supabase/queries";
 import { runResearch } from "@/lib/ai/researcher";
 import { analyzeOpportunities } from "@/lib/ai/analyzer";
 import { generateProduct } from "@/lib/ai/generator";
 import { evaluateProduct } from "@/lib/ai/evaluator";
+import { extractLessons } from "@/lib/ai/lesson-extractor";
 import { gumroad } from "@/lib/gumroad/client";
 import { generateProductPdf } from "@/lib/pdf/generator";
 import { generateThumbnail } from "@/lib/ai/thumbnail";
@@ -136,6 +138,32 @@ export async function executeGeneration(
 
     console.log(`[pipeline] QA result: ${qaResult.passed ? "PASSED" : "FAILED"} (scores: ${JSON.stringify(qaResult.scores)})`);
 
+    // Extract lessons from QA result (pass or fail)
+    try {
+      console.log(`[pipeline] Extracting lessons from QA result...`);
+      const lessons = await extractLessons({
+        qaResult,
+        productType: generated.product_type,
+        niche: opportunity.niche,
+        title: generated.title,
+      });
+      for (const lesson of lessons) {
+        await insertLesson({
+          product_id: null, // product not saved yet — will be orphaned but that's fine
+          phase: "generation",
+          lesson: lesson.lesson,
+          dimension: lesson.dimension,
+          severity: lesson.severity,
+          source_feedback: qaResult.feedback,
+          status: "active",
+        });
+      }
+      console.log(`[pipeline] Stored ${lessons.length} lessons`);
+    } catch (lessonError) {
+      // Non-fatal: don't fail the pipeline if lesson extraction fails
+      console.error(`[pipeline] Lesson extraction failed, continuing:`, lessonError);
+    }
+
     await updatePipelineRun(pipelineRun.id, {
       metadata: { ...pipelineRun.metadata, progress: 95 },
     }).catch(() => {});
@@ -143,7 +171,7 @@ export async function executeGeneration(
     // Determine status based on QA result
     const finalStatus = qaResult.passed ? "ready_for_review" as const : "qa_fail" as const;
 
-    // Save product to DB (95-100%)
+    // Save product to DB (95%)
     const product = await insertProduct({
       opportunity_id: opportunityId,
       report_id: reportId,
@@ -163,6 +191,27 @@ export async function executeGeneration(
       gumroad_url: null,
       status: finalStatus,
     });
+
+    // Generate thumbnail with DALL-E so it's available for review (95-100%)
+    const env = getEnv();
+    if (env.OPENAI_API_KEY && generated.thumbnail_prompt) {
+      try {
+        console.log(`[pipeline] Generating thumbnail with DALL-E...`);
+        const thumbnailBuffer = await generateThumbnail(generated.thumbnail_prompt);
+        const thumbnailUrl = await uploadFile(
+          `products/${product.id}/thumbnail.png`,
+          thumbnailBuffer,
+          "image/png",
+        );
+        await updateProduct(product.id, { thumbnail_url: thumbnailUrl });
+        console.log(`[pipeline] Thumbnail uploaded: ${thumbnailUrl}`);
+      } catch (thumbError) {
+        // Non-fatal: product is still reviewable without thumbnail
+        console.error(`[pipeline] Thumbnail generation failed, continuing without:`, thumbError);
+      }
+    } else {
+      console.log(`[pipeline] Skipping thumbnail (no OPENAI_API_KEY or thumbnail_prompt)`);
+    }
 
     // Update pipeline run
     await updatePipelineRun(pipelineRun.id, {
@@ -244,25 +293,28 @@ export async function executePublish(
     );
     console.log(`[publish] PDF uploaded: ${pdfUrl}`);
 
-    // Step 2: Generate thumbnail with DALL-E (if API key configured)
-    let thumbnailUrl: string | null = null;
-    const env = getEnv();
-    if (env.OPENAI_API_KEY && product.thumbnail_prompt) {
-      try {
-        console.log(`[publish] Generating thumbnail with DALL-E...`);
-        const thumbnailBuffer = await generateThumbnail(product.thumbnail_prompt);
-        thumbnailUrl = await uploadFile(
-          `products/${productId}/thumbnail.png`,
-          thumbnailBuffer,
-          "image/png",
-        );
-        console.log(`[publish] Thumbnail uploaded: ${thumbnailUrl}`);
-      } catch (thumbError) {
-        // Non-fatal: publish without thumbnail if DALL-E fails
-        console.error(`[publish] Thumbnail generation failed, continuing without:`, thumbError);
+    // Step 2: Use existing thumbnail (generated during generation phase), or generate if missing
+    let thumbnailUrl: string | null = product.thumbnail_url;
+    if (!thumbnailUrl) {
+      const env = getEnv();
+      if (env.OPENAI_API_KEY && product.thumbnail_prompt) {
+        try {
+          console.log(`[publish] Generating thumbnail with DALL-E (wasn't generated earlier)...`);
+          const thumbnailBuffer = await generateThumbnail(product.thumbnail_prompt);
+          thumbnailUrl = await uploadFile(
+            `products/${productId}/thumbnail.png`,
+            thumbnailBuffer,
+            "image/png",
+          );
+          console.log(`[publish] Thumbnail uploaded: ${thumbnailUrl}`);
+        } catch (thumbError) {
+          console.error(`[publish] Thumbnail generation failed, continuing without:`, thumbError);
+        }
+      } else {
+        console.log(`[publish] Skipping thumbnail (no OPENAI_API_KEY or thumbnail_prompt)`);
       }
     } else {
-      console.log(`[publish] Skipping thumbnail (no OPENAI_API_KEY or thumbnail_prompt)`);
+      console.log(`[publish] Using existing thumbnail: ${thumbnailUrl}`);
     }
 
     // Step 3: Save asset URLs to product

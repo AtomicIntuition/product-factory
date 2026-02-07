@@ -493,7 +493,7 @@ export default function ProductDetailPage({
             Thumbnail Prompt
           </h2>
           <p className="text-sm text-gray-400 mb-1">
-            {product.thumbnail_url ? "Generated from:" : "Will be used to generate thumbnail at publish time:"}
+            {product.thumbnail_url ? "Generated from:" : "Thumbnail generation failed or was skipped. Prompt:"}
           </p>
           <p className="text-sm text-gray-300 bg-gray-800 border border-gray-700 rounded-lg p-4">
             {product.thumbnail_prompt}

@@ -126,6 +126,18 @@ export interface PipelineRun {
   completed_at: string | null;
 }
 
+export interface Lesson {
+  id: string;
+  product_id: string | null;
+  phase: "generation" | "qa" | "research";
+  lesson: string;
+  dimension: string | null;
+  severity: number;
+  source_feedback: string | null;
+  status: "active" | "archived";
+  created_at: string;
+}
+
 export interface DashboardSummary {
   total_products: number;
   published_count: number;

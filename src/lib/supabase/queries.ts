@@ -7,6 +7,7 @@ import type {
   PipelineRun,
   ProductStatus,
   DashboardSummary,
+  Lesson,
 } from "@/types";
 
 const db = () => getSupabaseAdmin();
@@ -142,6 +143,51 @@ export async function getLatestPipelineRuns(): Promise<PipelineRun[]> {
 
 export async function deletePipelineRun(id: string): Promise<void> {
   const { error } = await db().from("pipeline_runs").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// --- Lessons ---
+
+export async function insertLesson(lesson: Omit<Lesson, "id" | "created_at">): Promise<Lesson> {
+  const { data, error } = await db().from("system_lessons").insert(lesson).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function getActiveLessons(phase?: Lesson["phase"], limit = 10): Promise<Lesson[]> {
+  let q = db()
+    .from("system_lessons")
+    .select("*")
+    .eq("status", "active")
+    .order("severity", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (phase) q = q.eq("phase", phase);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data;
+}
+
+export async function getLessons(status?: Lesson["status"]): Promise<Lesson[]> {
+  let q = db()
+    .from("system_lessons")
+    .select("*")
+    .order("severity", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (status) q = q.eq("status", status);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data;
+}
+
+export async function updateLesson(id: string, updates: Partial<Pick<Lesson, "status">>): Promise<Lesson> {
+  const { data, error } = await db().from("system_lessons").update(updates).eq("id", id).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteLesson(id: string): Promise<void> {
+  const { error } = await db().from("system_lessons").delete().eq("id", id);
   if (error) throw error;
 }
 
