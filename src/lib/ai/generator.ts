@@ -41,7 +41,7 @@ export async function generateProduct(params: {
   // Fetch lessons learned from previous QA cycles
   let lessons: Lesson[] = [];
   try {
-    lessons = await getActiveLessons("generation", 10);
+    lessons = await getActiveLessons("generation", 5);
     if (lessons.length > 0) {
       console.log(`[generator] Injecting ${lessons.length} lessons into system prompt`);
     }
@@ -60,7 +60,7 @@ export async function generateProduct(params: {
 Requirements for the product:
 1. Title: SEO-optimized for Gumroad search. Include the key search terms buyers would use. Under 80 characters.
 2. Description: Benefit-driven and scannable. Use bullet points. Lead with the value proposition. Include what the buyer gets, who it's for, and why it's better than alternatives.
-3. Content: Create a prompt pack with 5-6 themed sections. Each section should have 5-7 specific, ready-to-use prompts (aim for 30-40 total). Each prompt should be 1-3 sentences — specific and actionable, not padded with filler.
+3. Content: Create a prompt pack with 5 themed sections, each with 5-6 prompts (25-30 total). Each prompt MUST be 1-2 sentences MAX. No preamble, no explanation — just the ready-to-use prompt text.
 4. Tags: 5-8 relevant tags for Gumroad discoverability.
 5. Price: Set in cents. Should be competitive based on the opportunity data. Price appropriately for 30-40 prompts — typically $5-12.
 6. Thumbnail prompt: A prompt for generating a square (1:1) product cover image. Design it as a digital product thumbnail — bold text overlay with the product title, clean modern background, vibrant colors. Think Gumroad product card, NOT a landscape photo. Always specify "square format, 1:1 aspect ratio" in the prompt.
@@ -72,7 +72,11 @@ CRITICAL RULES FOR THE DESCRIPTION:
 - Do NOT claim per-section counts that exceed what you actually wrote. If a section has 8 prompts, say "8 prompts" not "80 prompts."
 - Honesty builds trust and prevents refunds. A well-described 35-prompt pack at $7 outsells a misleading "800+ prompt" pack at $29 that gets refunded.
 
-IMPORTANT: Be concise. Each prompt should be 1-3 sentences. Do not pad prompts with unnecessary detail. Keep the JSON output compact.${lessonsBlock}
+OUTPUT SIZE LIMIT: Your entire JSON response must fit within 8000 tokens. Be ruthlessly concise:
+- Each prompt: 1-2 sentences only. No introductions or explanations within prompts.
+- Description: 150 words max. Bullet points only.
+- Thumbnail prompt: 1-2 sentences.
+- No extra whitespace or formatting in JSON.${lessonsBlock}
 
 Return ONLY valid JSON with this exact structure:
 {
@@ -112,7 +116,7 @@ Create a comprehensive, genuinely valuable product that buyers would recommend t
     model: "sonnet",
     system,
     prompt,
-    maxTokens: 8192,
+    maxTokens: 12288,
     onProgress: params.onProgress,
   });
 }

@@ -284,6 +284,31 @@ export async function executePostGeneration(
     }
 
     await updatePipelineRun(pipelineRun.id, {
+      metadata: { ...pipelineRun.metadata, progress: 85 },
+    }).catch(() => {});
+
+    // Generate PDF for preview (85-95%)
+    try {
+      console.log(`[qa] Generating PDF for preview...`);
+      const pdfBuffer = generateProductPdf({
+        title: product.title,
+        description: product.description,
+        content,
+        price_cents: product.price_cents,
+      });
+      const pdfUrl = await uploadFile(
+        `products/${productId}/content.pdf`,
+        pdfBuffer,
+        "application/pdf",
+      );
+      await updateProduct(productId, { content_file_url: pdfUrl });
+      console.log(`[qa] PDF saved: ${pdfUrl}`);
+    } catch (pdfError) {
+      const errMsg = pdfError instanceof Error ? pdfError.message : String(pdfError);
+      console.error(`[qa] PDF generation failed: ${errMsg}`);
+    }
+
+    await updatePipelineRun(pipelineRun.id, {
       metadata: { ...pipelineRun.metadata, progress: 95 },
     }).catch(() => {});
 
