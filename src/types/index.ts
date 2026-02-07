@@ -92,6 +92,7 @@ export interface Product {
   description: string;
   content: Record<string, unknown>;
   content_file_url: string | null;
+  thumbnail_url: string | null;
   tags: string[];
   price_cents: number;
   currency: string;

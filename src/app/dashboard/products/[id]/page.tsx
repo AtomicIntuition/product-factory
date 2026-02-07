@@ -32,7 +32,8 @@ function statusBadgeColor(status: ProductStatus): string {
 }
 
 function ScoreBar({ label, value }: { label: string; value: number }) {
-  const pct = Math.round(value * 100);
+  // QA scores are 1-10, convert to percentage
+  const pct = Math.round(value * 10);
   let barColor = "bg-gray-500";
   if (pct >= 80) barColor = "bg-green-500";
   else if (pct >= 60) barColor = "bg-blue-500";
@@ -297,6 +298,40 @@ export default function ProductDetailPage({
         )}
       </div>
 
+      {/* Thumbnail + Download */}
+      {(product.thumbnail_url || product.content_file_url) && (
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
+          <h2 className="text-lg font-semibold text-white mb-4">Product Assets</h2>
+          <div className="flex flex-wrap gap-6">
+            {product.thumbnail_url && (
+              <div>
+                <p className="text-sm text-gray-400 mb-2">Thumbnail</p>
+                <img
+                  src={product.thumbnail_url}
+                  alt={`${product.title} thumbnail`}
+                  className="w-48 h-48 object-cover rounded-lg border border-gray-700"
+                />
+              </div>
+            )}
+            {product.content_file_url && (
+              <div className="flex items-end">
+                <a
+                  href={product.content_file_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-700 text-blue-400 rounded-lg transition-colors text-sm"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Download PDF
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-3">
         {product.status === "ready_for_review" && (
@@ -457,6 +492,9 @@ export default function ProductDetailPage({
           <h2 className="text-lg font-semibold text-white mb-2">
             Thumbnail Prompt
           </h2>
+          <p className="text-sm text-gray-400 mb-1">
+            {product.thumbnail_url ? "Generated from:" : "Will be used to generate thumbnail at publish time:"}
+          </p>
           <p className="text-sm text-gray-300 bg-gray-800 border border-gray-700 rounded-lg p-4">
             {product.thumbnail_prompt}
           </p>

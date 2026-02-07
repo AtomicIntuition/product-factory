@@ -13,6 +13,10 @@ import { analyzeOpportunities } from "@/lib/ai/analyzer";
 import { generateProduct } from "@/lib/ai/generator";
 import { evaluateProduct } from "@/lib/ai/evaluator";
 import { gumroad } from "@/lib/gumroad/client";
+import { generateProductPdf } from "@/lib/pdf/generator";
+import { generateThumbnail } from "@/lib/ai/thumbnail";
+import { uploadFile } from "@/lib/supabase/storage";
+import { getEnv } from "@/config/env";
 import type { Opportunity, GumroadProductData } from "@/types";
 
 export async function executeResearch(params: {
@@ -102,41 +106,59 @@ export async function executeGeneration(
   });
 
   try {
-    // Generate product with streaming progress
+    // Generate product with streaming progress (0-85%)
     console.log(`[pipeline] Generating product for opportunity: ${opportunity.niche}`);
     let lastSavedPct = 0;
-    const lastGenerated = await generateProduct({
+    const generated = await generateProduct({
       opportunity,
       attempt: 1,
       onProgress: (pct) => {
-        // Throttle DB writes: save every 5% change
-        if (pct - lastSavedPct >= 5 || pct === 100) {
-          lastSavedPct = pct;
+        // Scale generation progress to 0-85%
+        const scaledPct = Math.round(pct * 0.85);
+        if (scaledPct - lastSavedPct >= 5 || pct === 100) {
+          lastSavedPct = scaledPct;
           updatePipelineRun(pipelineRun.id, {
-            metadata: { ...pipelineRun.metadata, progress: pct },
+            metadata: { ...pipelineRun.metadata, progress: scaledPct },
           }).catch(() => {});
         }
       },
     });
-    console.log(`[pipeline] Generated product: "${lastGenerated.title}" (${lastGenerated.content.total_prompts} prompts)`);
+    console.log(`[pipeline] Generated product: "${generated.title}" (${generated.content.total_prompts} prompts)`);
 
-    const finalStatus = "ready_for_review" as const;
+    // QA evaluation (85-95%)
+    console.log(`[pipeline] Running QA evaluation...`);
+    await updatePipelineRun(pipelineRun.id, {
+      metadata: { ...pipelineRun.metadata, progress: 87 },
+    }).catch(() => {});
 
-    // Save product to DB
+    const qaResult = await evaluateProduct(generated);
+    qaResult.attempt = 1;
+
+    console.log(`[pipeline] QA result: ${qaResult.passed ? "PASSED" : "FAILED"} (scores: ${JSON.stringify(qaResult.scores)})`);
+
+    await updatePipelineRun(pipelineRun.id, {
+      metadata: { ...pipelineRun.metadata, progress: 95 },
+    }).catch(() => {});
+
+    // Determine status based on QA result
+    const finalStatus = qaResult.passed ? "ready_for_review" as const : "qa_fail" as const;
+
+    // Save product to DB (95-100%)
     const product = await insertProduct({
       opportunity_id: opportunityId,
       report_id: reportId,
-      product_type: lastGenerated.product_type,
-      title: lastGenerated.title,
-      description: lastGenerated.description,
-      content: lastGenerated.content as unknown as Record<string, unknown>,
+      product_type: generated.product_type,
+      title: generated.title,
+      description: generated.description,
+      content: generated.content as unknown as Record<string, unknown>,
       content_file_url: null,
-      tags: lastGenerated.tags,
-      price_cents: lastGenerated.price_cents,
-      currency: lastGenerated.currency,
-      thumbnail_prompt: lastGenerated.thumbnail_prompt,
-      qa_score: null,
-      qa_attempts: 0,
+      thumbnail_url: null,
+      tags: generated.tags,
+      price_cents: generated.price_cents,
+      currency: generated.currency,
+      thumbnail_prompt: generated.thumbnail_prompt,
+      qa_score: qaResult,
+      qa_attempts: 1,
       gumroad_id: null,
       gumroad_url: null,
       status: finalStatus,
@@ -149,7 +171,9 @@ export async function executeGeneration(
       metadata: {
         ...pipelineRun.metadata,
         productId: product.id,
-
+        progress: 100,
+        qa_passed: qaResult.passed,
+        qa_scores: qaResult.scores,
       },
     });
 
@@ -200,12 +224,61 @@ export async function executePublish(
     // Update product status to publishing
     await updateProduct(productId, { status: "publishing" });
 
-    // Create product on Gumroad
+    // Step 1: Generate PDF from content
+    console.log(`[publish] Generating PDF for product: ${product.title}`);
+    const content = product.content as {
+      format: string;
+      sections: { title: string; prompts: string[] }[];
+      total_prompts: number;
+    };
+    const pdfBuffer = generateProductPdf({
+      title: product.title,
+      description: product.description,
+      content,
+      price_cents: product.price_cents,
+    });
+    const pdfUrl = await uploadFile(
+      `products/${productId}/content.pdf`,
+      pdfBuffer,
+      "application/pdf",
+    );
+    console.log(`[publish] PDF uploaded: ${pdfUrl}`);
+
+    // Step 2: Generate thumbnail with DALL-E (if API key configured)
+    let thumbnailUrl: string | null = null;
+    const env = getEnv();
+    if (env.OPENAI_API_KEY && product.thumbnail_prompt) {
+      try {
+        console.log(`[publish] Generating thumbnail with DALL-E...`);
+        const thumbnailBuffer = await generateThumbnail(product.thumbnail_prompt);
+        thumbnailUrl = await uploadFile(
+          `products/${productId}/thumbnail.png`,
+          thumbnailBuffer,
+          "image/png",
+        );
+        console.log(`[publish] Thumbnail uploaded: ${thumbnailUrl}`);
+      } catch (thumbError) {
+        // Non-fatal: publish without thumbnail if DALL-E fails
+        console.error(`[publish] Thumbnail generation failed, continuing without:`, thumbError);
+      }
+    } else {
+      console.log(`[publish] Skipping thumbnail (no OPENAI_API_KEY or thumbnail_prompt)`);
+    }
+
+    // Step 3: Save asset URLs to product
+    await updateProduct(productId, {
+      content_file_url: pdfUrl,
+      thumbnail_url: thumbnailUrl,
+    });
+
+    // Step 4: Create product on Gumroad with asset URLs
     const createResponse = await gumroad.createProduct({
       name: product.title,
       description: product.description,
       price: product.price_cents,
       tags: product.tags,
+      url: pdfUrl,
+      preview_url: thumbnailUrl ?? undefined,
     });
 
     const gumroadProduct = createResponse.product as
@@ -216,12 +289,12 @@ export async function executePublish(
       throw new Error("Gumroad createProduct did not return a product ID");
     }
 
-    // Enable the product (make it live)
+    // Step 5: Enable the product (make it live)
     await gumroad.enableProduct(gumroadProduct.id);
 
     const gumroadUrl = gumroadProduct.short_url || `https://gumroad.com/l/${gumroadProduct.id}`;
 
-    // Update product with Gumroad info
+    // Step 6: Update product with Gumroad info
     await updateProduct(productId, {
       gumroad_id: gumroadProduct.id,
       gumroad_url: gumroadUrl,
@@ -236,6 +309,8 @@ export async function executePublish(
         ...pipelineRun.metadata,
         gumroad_id: gumroadProduct.id,
         gumroad_url: gumroadUrl,
+        content_file_url: pdfUrl,
+        thumbnail_url: thumbnailUrl,
       },
     });
 

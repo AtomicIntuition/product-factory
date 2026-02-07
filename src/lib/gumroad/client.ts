@@ -70,6 +70,8 @@ export const gumroad = {
     description: string;
     price: number;
     tags: string[];
+    url?: string;
+    preview_url?: string;
   }): Promise<GumroadResponse> {
     const form = new FormData();
     form.set("name", params.name);
@@ -77,6 +79,12 @@ export const gumroad = {
     form.set("price", params.price.toString());
     for (const tag of params.tags) {
       form.append("tags[]", tag);
+    }
+    if (params.url) {
+      form.set("url", params.url);
+    }
+    if (params.preview_url) {
+      form.set("preview_url", params.preview_url);
     }
     return request("POST", "/products", form);
   },
