@@ -94,11 +94,14 @@ export async function executeResearch(params: {
   }
 }
 
+// Phase 1 of generation: create product content with Claude and save to DB.
+// QA, lessons, and thumbnail happen in a separate function call (executePostGeneration)
+// so each gets its own 300s Vercel timeout.
 export async function executeGeneration(
   opportunityId: string,
   reportId: string,
   opportunity: Opportunity,
-): Promise<{ productId: string }> {
+): Promise<{ productId: string; pipelineRunId: string }> {
   const pipelineRun = await insertPipelineRun({
     phase: "generate",
     status: "running",
@@ -108,15 +111,14 @@ export async function executeGeneration(
   });
 
   try {
-    // Generate product with streaming progress (0-85%)
-    console.log(`[pipeline] Generating product for opportunity: ${opportunity.niche}`);
+    // Generate product with streaming progress (0-90%)
+    console.log(`[generate] Generating product for opportunity: ${opportunity.niche}`);
     let lastSavedPct = 0;
     const generated = await generateProduct({
       opportunity,
       attempt: 1,
       onProgress: (pct) => {
-        // Scale generation progress to 0-85%
-        const scaledPct = Math.round(pct * 0.85);
+        const scaledPct = Math.round(pct * 0.9);
         if (scaledPct - lastSavedPct >= 5 || pct === 100) {
           lastSavedPct = scaledPct;
           updatePipelineRun(pipelineRun.id, {
@@ -125,53 +127,9 @@ export async function executeGeneration(
         }
       },
     });
-    console.log(`[pipeline] Generated product: "${generated.title}" (${generated.content.total_prompts} prompts)`);
+    console.log(`[generate] Generated product: "${generated.title}" (${generated.content.total_prompts} prompts)`);
 
-    // QA evaluation (85-95%)
-    console.log(`[pipeline] Running QA evaluation...`);
-    await updatePipelineRun(pipelineRun.id, {
-      metadata: { ...pipelineRun.metadata, progress: 87 },
-    }).catch(() => {});
-
-    const qaResult = await evaluateProduct(generated);
-    qaResult.attempt = 1;
-
-    console.log(`[pipeline] QA result: ${qaResult.passed ? "PASSED" : "FAILED"} (scores: ${JSON.stringify(qaResult.scores)})`);
-
-    // Extract lessons from QA result (pass or fail)
-    try {
-      console.log(`[pipeline] Extracting lessons from QA result...`);
-      const lessons = await extractLessons({
-        qaResult,
-        productType: generated.product_type,
-        niche: opportunity.niche,
-        title: generated.title,
-      });
-      for (const lesson of lessons) {
-        await insertLesson({
-          product_id: null, // product not saved yet — will be orphaned but that's fine
-          phase: "generation",
-          lesson: lesson.lesson,
-          dimension: lesson.dimension,
-          severity: lesson.severity,
-          source_feedback: qaResult.feedback,
-          status: "active",
-        });
-      }
-      console.log(`[pipeline] Stored ${lessons.length} lessons`);
-    } catch (lessonError) {
-      // Non-fatal: don't fail the pipeline if lesson extraction fails
-      console.error(`[pipeline] Lesson extraction failed, continuing:`, lessonError);
-    }
-
-    await updatePipelineRun(pipelineRun.id, {
-      metadata: { ...pipelineRun.metadata, progress: 95 },
-    }).catch(() => {});
-
-    // Determine status based on QA result
-    const finalStatus = qaResult.passed ? "ready_for_review" as const : "qa_fail" as const;
-
-    // Save product to DB (95%)
+    // Save product to DB (90-100%)
     const product = await insertProduct({
       opportunity_id: opportunityId,
       report_id: reportId,
@@ -185,44 +143,14 @@ export async function executeGeneration(
       price_cents: generated.price_cents,
       currency: generated.currency,
       thumbnail_prompt: generated.thumbnail_prompt,
-      qa_score: qaResult,
-      qa_attempts: 1,
+      qa_score: null,
+      qa_attempts: 0,
       gumroad_id: null,
       gumroad_url: null,
-      status: finalStatus,
+      status: "qa_pending",
     });
 
-    // Generate thumbnail with DALL-E so it's available for review (95-100%)
-    const env = getEnv();
-    if (env.OPENAI_API_KEY && generated.thumbnail_prompt) {
-      try {
-        console.log(`[pipeline] Generating thumbnail with DALL-E for product ${product.id}...`);
-        console.log(`[pipeline] Thumbnail prompt: ${generated.thumbnail_prompt.slice(0, 100)}...`);
-        const thumbnailBuffer = await generateThumbnail(generated.thumbnail_prompt);
-        console.log(`[pipeline] DALL-E returned ${thumbnailBuffer.length} bytes, uploading...`);
-        const thumbnailUrl = await uploadFile(
-          `products/${product.id}/thumbnail.png`,
-          thumbnailBuffer,
-          "image/png",
-        );
-        await updateProduct(product.id, { thumbnail_url: thumbnailUrl });
-        console.log(`[pipeline] Thumbnail saved to product: ${thumbnailUrl}`);
-      } catch (thumbError) {
-        // Non-fatal but log the full error so we can debug
-        const errMsg = thumbError instanceof Error ? thumbError.message : String(thumbError);
-        const errStack = thumbError instanceof Error ? thumbError.stack : "";
-        console.error(`[pipeline] Thumbnail generation FAILED: ${errMsg}`);
-        console.error(`[pipeline] Thumbnail error stack: ${errStack}`);
-        // Store the error in the product metadata so it's visible in the dashboard
-        await updatePipelineRun(pipelineRun.id, {
-          metadata: { ...pipelineRun.metadata, thumbnail_error: errMsg },
-        }).catch(() => {});
-      }
-    } else {
-      console.log(`[pipeline] Skipping thumbnail — OPENAI_API_KEY: ${env.OPENAI_API_KEY ? "set" : "NOT SET"}, thumbnail_prompt: ${generated.thumbnail_prompt ? "yes" : "NO"}`);
-    }
-
-    // Update pipeline run
+    // Mark generation as completed
     await updatePipelineRun(pipelineRun.id, {
       status: "completed",
       completed_at: new Date().toISOString(),
@@ -230,13 +158,153 @@ export async function executeGeneration(
         ...pipelineRun.metadata,
         productId: product.id,
         progress: 100,
+      },
+    });
+
+    console.log(`[generate] Product saved: ${product.id}, triggering QA phase...`);
+    return { productId: product.id, pipelineRunId: pipelineRun.id };
+  } catch (error) {
+    await updatePipelineRun(pipelineRun.id, {
+      status: "failed",
+      completed_at: new Date().toISOString(),
+      metadata: {
+        ...pipelineRun.metadata,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+    throw error;
+  }
+}
+
+// Phase 2: QA evaluation, lesson extraction, and thumbnail generation.
+// Runs in its own serverless function invocation with its own 300s timeout.
+export async function executePostGeneration(
+  productId: string,
+): Promise<void> {
+  const product = await getProductById(productId);
+
+  const pipelineRun = await insertPipelineRun({
+    phase: "qa",
+    status: "running",
+    metadata: { productId },
+    started_at: new Date().toISOString(),
+    completed_at: null,
+  });
+
+  try {
+    // Reconstruct the generated product shape for the evaluator
+    const content = product.content as {
+      format: string;
+      sections: { title: string; prompts: string[] }[];
+      total_prompts: number;
+    };
+    const generatedProduct = {
+      product_type: product.product_type,
+      title: product.title,
+      description: product.description,
+      content,
+      tags: product.tags,
+      price_cents: product.price_cents,
+      currency: product.currency,
+      thumbnail_prompt: product.thumbnail_prompt,
+    };
+
+    // QA evaluation (0-50%)
+    console.log(`[qa] Running QA evaluation for "${product.title}"...`);
+    await updatePipelineRun(pipelineRun.id, {
+      metadata: { ...pipelineRun.metadata, progress: 10 },
+    }).catch(() => {});
+
+    const qaResult = await evaluateProduct(generatedProduct);
+    qaResult.attempt = 1;
+
+    console.log(`[qa] QA result: ${qaResult.passed ? "PASSED" : "FAILED"} (scores: ${JSON.stringify(qaResult.scores)})`);
+
+    await updatePipelineRun(pipelineRun.id, {
+      metadata: { ...pipelineRun.metadata, progress: 50 },
+    }).catch(() => {});
+
+    // Extract lessons from QA result (50-70%)
+    try {
+      console.log(`[qa] Extracting lessons from QA result...`);
+      const lessons = await extractLessons({
+        qaResult,
+        productType: product.product_type,
+        niche: product.tags[0] ?? "general",
+        title: product.title,
+      });
+      for (const lesson of lessons) {
+        await insertLesson({
+          product_id: productId,
+          phase: "generation",
+          lesson: lesson.lesson,
+          dimension: lesson.dimension,
+          severity: lesson.severity,
+          source_feedback: qaResult.feedback,
+          status: "active",
+        });
+      }
+      console.log(`[qa] Stored ${lessons.length} lessons`);
+    } catch (lessonError) {
+      console.error(`[qa] Lesson extraction failed, continuing:`, lessonError);
+    }
+
+    await updatePipelineRun(pipelineRun.id, {
+      metadata: { ...pipelineRun.metadata, progress: 70 },
+    }).catch(() => {});
+
+    // Generate thumbnail (70-95%)
+    const env = getEnv();
+    if (env.OPENAI_API_KEY && product.thumbnail_prompt) {
+      try {
+        console.log(`[qa] Generating thumbnail with gpt-image-1...`);
+        const thumbnailBuffer = await generateThumbnail(product.thumbnail_prompt);
+        console.log(`[qa] Got ${thumbnailBuffer.length} bytes, uploading...`);
+        const thumbnailUrl = await uploadFile(
+          `products/${productId}/thumbnail.png`,
+          thumbnailBuffer,
+          "image/png",
+        );
+        await updateProduct(productId, { thumbnail_url: thumbnailUrl });
+        console.log(`[qa] Thumbnail saved: ${thumbnailUrl}`);
+      } catch (thumbError) {
+        const errMsg = thumbError instanceof Error ? thumbError.message : String(thumbError);
+        console.error(`[qa] Thumbnail generation failed: ${errMsg}`);
+      }
+    } else {
+      console.log(`[qa] Skipping thumbnail — OPENAI_API_KEY: ${env.OPENAI_API_KEY ? "set" : "NOT SET"}, thumbnail_prompt: ${product.thumbnail_prompt ? "yes" : "NO"}`);
+    }
+
+    await updatePipelineRun(pipelineRun.id, {
+      metadata: { ...pipelineRun.metadata, progress: 95 },
+    }).catch(() => {});
+
+    // Update product with QA result and final status
+    const finalStatus = qaResult.passed ? "ready_for_review" as const : "qa_fail" as const;
+    await updateProduct(productId, {
+      qa_score: qaResult,
+      qa_attempts: 1,
+      status: finalStatus,
+    });
+
+    // Complete pipeline run
+    await updatePipelineRun(pipelineRun.id, {
+      status: "completed",
+      completed_at: new Date().toISOString(),
+      metadata: {
+        ...pipelineRun.metadata,
+        productId,
+        progress: 100,
         qa_passed: qaResult.passed,
         qa_scores: qaResult.scores,
       },
     });
 
-    return { productId: product.id };
+    console.log(`[qa] Post-generation complete. Product status: ${finalStatus}`);
   } catch (error) {
+    // Mark product as failed if QA crashes
+    await updateProduct(productId, { status: "qa_fail" }).catch(() => {});
+
     await updatePipelineRun(pipelineRun.id, {
       status: "failed",
       completed_at: new Date().toISOString(),
@@ -302,13 +370,13 @@ export async function executePublish(
     );
     console.log(`[publish] PDF uploaded: ${pdfUrl}`);
 
-    // Step 2: Use existing thumbnail (generated during generation phase), or generate if missing
+    // Step 2: Use existing thumbnail or generate if missing
     let thumbnailUrl: string | null = product.thumbnail_url;
     if (!thumbnailUrl) {
       const env = getEnv();
       if (env.OPENAI_API_KEY && product.thumbnail_prompt) {
         try {
-          console.log(`[publish] Generating thumbnail with DALL-E (wasn't generated earlier)...`);
+          console.log(`[publish] Generating thumbnail (wasn't generated earlier)...`);
           const thumbnailBuffer = await generateThumbnail(product.thumbnail_prompt);
           thumbnailUrl = await uploadFile(
             `products/${productId}/thumbnail.png`,
@@ -319,8 +387,6 @@ export async function executePublish(
         } catch (thumbError) {
           console.error(`[publish] Thumbnail generation failed, continuing without:`, thumbError);
         }
-      } else {
-        console.log(`[publish] Skipping thumbnail (no OPENAI_API_KEY or thumbnail_prompt)`);
       }
     } else {
       console.log(`[publish] Using existing thumbnail: ${thumbnailUrl}`);

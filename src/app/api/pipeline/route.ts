@@ -5,6 +5,7 @@ import { getLatestPipelineRuns, deletePipelineRun } from "@/lib/supabase/queries
 import {
   executeResearch,
   executeGeneration,
+  executePostGeneration,
   executePublish,
 } from "@/lib/pipeline/orchestrator";
 import type { Opportunity } from "@/types";
@@ -45,12 +46,26 @@ const PipelineActionSchema = z.discriminatedUnion("action", [
     }),
   }),
   z.object({
+    action: z.literal("post_generate"),
+    params: z.object({
+      productId: z.string(),
+    }),
+  }),
+  z.object({
     action: z.literal("publish"),
     params: z.object({
       productId: z.string(),
     }),
   }),
 ]);
+
+function getBaseUrl(request: NextRequest): string {
+  // On Vercel, use the deployment URL. Locally, use the request origin.
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  return new URL(request.url).origin;
+}
 
 export async function GET() {
   try {
@@ -90,26 +105,50 @@ export async function POST(request: NextRequest) {
     }
 
     const { action, params } = parsed.data;
+    const baseUrl = getBaseUrl(request);
     let result: unknown;
 
     switch (action) {
       case "research":
         result = await executeResearch(params);
         break;
+
       case "generate":
-        // Use after() to keep the serverless function alive on Vercel
-        // while returning an immediate response to the client.
-        // Progress is tracked via streaming and written to pipeline_runs metadata.
+        // Phase 1: Generate product content (runs in after(), gets up to 300s)
+        // When done, automatically triggers Phase 2 (post_generate) as a new request
         after(
           executeGeneration(
             params.opportunityId,
             params.reportId,
             params.opportunity as Opportunity,
-          ).catch((err) => {
-            console.error("[pipeline] Generation failed:", err);
+          )
+            .then(({ productId }) => {
+              // Fire off post-generation as a NEW serverless function invocation
+              console.log(`[pipeline] Generation done, triggering post_generate for ${productId}`);
+              return fetch(`${baseUrl}/api/pipeline`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "post_generate",
+                  params: { productId },
+                }),
+              });
+            })
+            .catch((err) => {
+              console.error("[pipeline] Generation failed:", err);
+            }),
+        );
+        return NextResponse.json({ status: "started" }, { status: 202 });
+
+      case "post_generate":
+        // Phase 2: QA + lessons + thumbnail (runs in after(), gets its own 300s)
+        after(
+          executePostGeneration(params.productId).catch((err) => {
+            console.error("[pipeline] Post-generation failed:", err);
           }),
         );
         return NextResponse.json({ status: "started" }, { status: 202 });
+
       case "publish":
         result = await executePublish(params.productId);
         break;
