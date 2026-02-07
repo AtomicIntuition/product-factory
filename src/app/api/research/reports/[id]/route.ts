@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getReportById } from "@/lib/supabase/queries";
+import { getReportById, deleteReport } from "@/lib/supabase/queries";
 
 export async function GET(
   _request: NextRequest,
@@ -14,6 +14,20 @@ export async function GET(
     if (message.includes("No rows found") || message.includes("PGRST116")) {
       return NextResponse.json({ error: "Report not found" }, { status: 404 });
     }
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<NextResponse> {
+  try {
+    const { id } = await params;
+    await deleteReport(id);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -51,6 +51,11 @@ export async function getReportById(id: string): Promise<ResearchReport> {
   return data;
 }
 
+export async function deleteReport(id: string): Promise<void> {
+  const { error } = await db().from("research_reports").delete().eq("id", id);
+  if (error) throw error;
+}
+
 // --- Products ---
 
 export async function insertProduct(product: Omit<Product, "id" | "created_at" | "updated_at">): Promise<Product> {

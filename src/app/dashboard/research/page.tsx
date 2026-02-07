@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import type { ResearchReport, Opportunity } from "@/types";
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString();
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function formatCents(cents: number): string {
@@ -51,6 +52,7 @@ export default function ResearchPage(): React.ReactElement {
 
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
   const [generateSuccess, setGenerateSuccess] = useState<string | null>(null);
+  const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchReports();
@@ -274,46 +276,73 @@ export default function ResearchPage(): React.ReactElement {
                   className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden"
                 >
                   {/* Report Header */}
-                  <button
-                    onClick={() =>
-                      setExpandedReportId(isExpanded ? null : report.id)
-                    }
-                    className="w-full px-5 py-4 flex items-center gap-4 hover:bg-gray-800/50 transition-colors text-left"
-                  >
-                    <svg
-                      className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? "rotate-90" : ""}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+                  <div className="flex items-center">
+                    <button
+                      onClick={() =>
+                        setExpandedReportId(isExpanded ? null : report.id)
+                      }
+                      className="flex-1 px-5 py-4 flex items-center gap-4 hover:bg-gray-800/50 transition-colors text-left"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 5l7 7-7 7"
-                      />
-                    </svg>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-1">
-                        <span className="text-sm text-gray-300">
-                          {formatDate(report.created_at)}
-                        </span>
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(report.status)}`}
-                        >
-                          {report.status}
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          {report.opportunities.length} opportunities
-                        </span>
+                      <svg
+                        className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 5l7 7-7 7"
+                        />
+                      </svg>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 mb-1">
+                          <span className="text-sm text-gray-300">
+                            {formatDateTime(report.created_at)}
+                          </span>
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(report.status)}`}
+                          >
+                            {report.status}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {report.opportunities.length} opportunities
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-400 truncate">
+                          {report.summary.length > 100
+                            ? report.summary.slice(0, 100) + "..."
+                            : report.summary}
+                        </p>
                       </div>
-                      <p className="text-sm text-gray-400 truncate">
-                        {report.summary.length > 100
-                          ? report.summary.slice(0, 100) + "..."
-                          : report.summary}
-                      </p>
-                    </div>
-                  </button>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!confirm("Delete this research report?")) return;
+                        setDeletingReportId(report.id);
+                        fetch(`/api/research/reports/${report.id}`, { method: "DELETE" })
+                          .then((res) => {
+                            if (!res.ok) throw new Error("Delete failed");
+                            setReports((prev) => prev.filter((r) => r.id !== report.id));
+                            if (isExpanded) setExpandedReportId(null);
+                          })
+                          .catch(() => setError("Failed to delete report"))
+                          .finally(() => setDeletingReportId(null));
+                      }}
+                      disabled={deletingReportId === report.id}
+                      className="px-4 py-4 text-red-500 hover:text-red-400 disabled:opacity-40 transition-colors"
+                      title="Delete report"
+                    >
+                      {deletingReportId === report.id ? (
+                        <span className="text-xs">...</span>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
 
                   {/* Expanded Opportunities Table */}
                   {isExpanded && (
