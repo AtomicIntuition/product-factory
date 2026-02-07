@@ -15,15 +15,25 @@ An automated system that researches trending digital products on Gumroad, identi
 - **Queue/Cron:** Inngest or built-in Next.js cron for automated pipeline runs
 - **Validation:** Zod for runtime validation of API responses and external data
 
+## Deployment
+- **Hosting:** Vercel (hobby plan, 300s max serverless function duration)
+- **Repo:** https://github.com/AtomicIntuition/product-factory.git
+- **Live:** https://product-factory-rtgm.vercel.app/dashboard
+
 ## Architecture — The Pipeline
 The system runs as a 4-phase automated pipeline:
 
-1. **RESEARCH** — Scrape/analyze Gumroad discover page, trending products, top sellers, reviews, pricing
-2. **ANALYZE** — Use Claude with full market context to identify gaps and high-opportunity niches
-3. **GENERATE** — Create the actual digital product + listing copy + thumbnail description
+1. **RESEARCH** — Use Claude (Opus) to analyze Gumroad market data, trending products, pricing, reviews
+2. **ANALYZE** — Claude identifies gaps and scores opportunities (auto-runs after research)
+3. **GENERATE** — Claude (Sonnet) creates product content via streaming, with real-time progress tracking
 4. **PUBLISH** — Deploy to Gumroad via API, set pricing, categorize, activate
 
-Each phase logs to Supabase. The dashboard shows pipeline status, products created, and sales data.
+Each phase logs to `pipeline_runs` in Supabase. The dashboard auto-polls and shows live progress.
+
+### Key Implementation Details
+- **Generation is non-blocking:** API returns 202 immediately, uses `after()` from `next/server` to keep Vercel function alive while generation runs in background
+- **Streaming progress:** Generation uses Claude streaming API. Token count → progress % written to `pipeline_runs.metadata.progress` every 5%. Dashboard polls every 5s and shows a live progress bar
+- **Research is blocking:** API waits for full completion (~2 min), dashboard shows spinner
 
 ## Project Structure
 ```
@@ -74,4 +84,8 @@ tests/                      # Test files
 - ALWAYS add Zod input validation when creating new API routes
 - ALWAYS handle Gumroad API rate limits with exponential backoff
 - ALWAYS validate Claude API output structure before proceeding in the pipeline
+- ALWAYS check `stop_reason` on Claude API responses to detect truncation
+- ALWAYS use streaming (`onProgress` callback) for generation to track progress
+- NEVER use fire-and-forget on Vercel without `after()` — the function gets killed
+- Keep generation output under 16384 tokens (5-10 prompts/section, 40-60 total)
 - Write tests for pipeline logic — it is the core business logic
