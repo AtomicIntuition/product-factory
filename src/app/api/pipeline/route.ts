@@ -8,8 +8,8 @@ import {
 } from "@/lib/pipeline/orchestrator";
 import type { Opportunity } from "@/types";
 
-// Allow long-running pipeline operations (up to 15 minutes)
-export const maxDuration = 900;
+// Allow long-running pipeline operations (Vercel hobby plan max: 300s)
+export const maxDuration = 300;
 
 const OpportunitySchema = z.object({
   id: z.string(),
