@@ -67,7 +67,10 @@ Create a product BLUEPRINT — the metadata and structure only. The actual promp
 
 Requirements:
 
-1. TITLE: SEO-optimized for Gumroad search. Include the key search terms buyers would use. Under 80 characters. Use power words and make it clear what the buyer gets (e.g. "30 Expert AI Prompts for...").
+1. TITLE: SEO-optimized for Gumroad search. Include the key search terms buyers would use. Under 80 characters. Use power words and make it clear what the buyer gets.
+   - CRITICAL: The title MUST say "30" prompts because the pack contains exactly 30 prompts (5 sections × 6 prompts). NEVER claim a higher number like 50, 100, 200, 500, or 600+. That is false advertising.
+   - Good example: "30 Expert AI Prompts for Shopify & DTC Ecommerce"
+   - Bad example: "600+ ChatGPT Prompts for Shopify" (WRONG — we only have 30)
 
 2. DESCRIPTION: This is the most important part — it's your sales page. Write a full, high-converting Gumroad listing description using markdown. Study what top-selling Gumroad products do:
    - Start with a bold hook or pain point that grabs attention
@@ -80,8 +83,7 @@ Requirements:
    - End with a clear call-to-action
    - Be specific about the value (e.g. "Save 10+ hours per week" not "save time")
    - 300-500 words is the sweet spot for Gumroad descriptions
-   - Do NOT inflate numbers or promise materials beyond the prompt pack
-   - The description MUST accurately reflect 5 sections × 6 prompts = 30 prompts
+   - CRITICAL: Do NOT inflate numbers. The product contains EXACTLY 30 prompts (5 sections × 6 prompts). Never claim more. Say "30" in both the title and description. False advertising destroys trust and triggers refunds.
 
 3. SECTION TITLES: Exactly 5 themed section titles that comprehensively cover the niche. Each section will contain 6 detailed prompts (30 total). Make section titles compelling and specific.
 
