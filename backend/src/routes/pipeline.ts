@@ -5,7 +5,6 @@ import {
   executeResearch,
   executeGeneration,
   executePostGeneration,
-  executePublish,
 } from "@/lib/pipeline/orchestrator";
 import type { Opportunity } from "@/types";
 
@@ -41,12 +40,6 @@ const PipelineActionSchema = z.discriminatedUnion("action", [
       opportunity: OpportunitySchema,
     }),
   }),
-  z.object({
-    action: z.literal("publish"),
-    params: z.object({
-      productId: z.string(),
-    }),
-  }),
 ]);
 
 export const pipelineRouter = Router();
@@ -76,7 +69,7 @@ pipelineRouter.post("/", async (req: Request, res: Response) => {
         // Return 202 immediately, then run generation + post-generation sequentially
         res.status(202).json({ status: "started" });
 
-        // Run both phases in-process — no timeout limit on Render
+        // Run both phases in-process — no timeout limit on Railway
         executeGeneration(
           params.opportunityId,
           params.reportId,
@@ -94,12 +87,6 @@ pipelineRouter.post("/", async (req: Request, res: Response) => {
           .catch((err) => {
             console.error("[pipeline] Generation pipeline failed:", err);
           });
-        return;
-      }
-
-      case "publish": {
-        const result = await executePublish(params.productId);
-        res.status(201).json(result);
         return;
       }
     }
