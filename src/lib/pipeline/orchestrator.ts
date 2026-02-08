@@ -1,6 +1,7 @@
 import {
   insertResearchRaw,
   insertReport,
+  getReportById,
   getResearchRawByRunId,
   insertProduct,
   updateProduct,
@@ -66,7 +67,11 @@ export async function executeResearch(params: {
       topSellerPatterns: researchResult.top_seller_patterns,
     });
 
-    // Save report
+    // Save report (include top seller patterns in summary for downstream use)
+    const fullSummary = researchResult.top_seller_patterns
+      ? `${analysisResult.summary}\n\n---\n\nTOP SELLER PATTERNS:\n${researchResult.top_seller_patterns}`
+      : analysisResult.summary;
+
     const report = await insertReport({
       run_id: runId,
       opportunities: analysisResult.opportunities.map((opp) => ({
@@ -74,7 +79,7 @@ export async function executeResearch(params: {
         id: crypto.randomUUID(),
         built: false,
       })),
-      summary: analysisResult.summary,
+      summary: fullSummary,
       status: "active",
     });
 
@@ -120,12 +125,17 @@ export async function executeGeneration(
   });
 
   try {
+    // Fetch report to get market intelligence for the generator
+    const report = await getReportById(reportId);
+    const marketIntelligence = report.summary;
+
     // Generate product with streaming progress (0-90%)
     console.log(`[generate] Generating product for opportunity: ${opportunity.niche}`);
     let lastSavedPct = 0;
     const generated = await generateProduct({
       opportunity,
       attempt: 1,
+      marketIntelligence,
       onProgress: (pct) => {
         const scaledPct = Math.round(pct * 0.9);
         if (scaledPct - lastSavedPct >= 5 || pct === 100) {

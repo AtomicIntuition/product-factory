@@ -55,6 +55,7 @@ async function generateBlueprint(params: {
   attempt: number;
   previousFeedback?: string;
   lessonsBlock: string;
+  marketIntelligence?: string;
 }): Promise<ProductBlueprint> {
   const feedbackContext = params.previousFeedback
     ? `\n\nIMPORTANT — PREVIOUS ATTEMPT FEEDBACK (attempt ${params.attempt - 1}):\n${params.previousFeedback}\n\nAddress every issue mentioned above.`
@@ -88,7 +89,7 @@ Requirements:
 
 5. PRICE: In cents. Competitive based on opportunity data. Typically $7-12 for 30 expert prompts.
 
-6. THUMBNAIL PROMPT: A prompt for generating a square (1:1) product cover image. Bold text overlay with the product title, clean modern background, vibrant colors. Gumroad product card style, NOT a photo.${params.lessonsBlock}
+6. THUMBNAIL PROMPT: A prompt for generating a square (1:1) product cover image. Bold text overlay with the product title, clean modern background, vibrant colors. Gumroad product card style, NOT a photo.${params.lessonsBlock}${params.marketIntelligence ? `\n\nMARKET INTELLIGENCE FROM RESEARCH:\n${params.marketIntelligence}\n\nUse the market analysis and top seller patterns above to craft a listing that competes with or exceeds the best-performing products in this space. Apply their winning strategies to your title, description, pricing, and section structure.` : ""}
 
 Return ONLY valid JSON:
 {
@@ -173,6 +174,7 @@ export async function generateProduct(params: {
   opportunity: Opportunity;
   attempt: number;
   previousFeedback?: string;
+  marketIntelligence?: string;
   onProgress?: (pct: number) => void;
 }): Promise<GeneratedProduct> {
   // Fetch lessons learned from previous QA cycles
@@ -196,6 +198,7 @@ export async function generateProduct(params: {
     attempt: params.attempt,
     previousFeedback: params.previousFeedback,
     lessonsBlock,
+    marketIntelligence: params.marketIntelligence,
   });
 
   console.log(`[generator] Blueprint: "${blueprint.title}" — sections: ${blueprint.section_titles.join(", ")}`);
