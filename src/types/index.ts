@@ -43,6 +43,8 @@ export interface GumroadProductData {
   url: string;
   tags: string[];
   category: string;
+  sales_estimate?: string;
+  listing_quality?: string;
 }
 
 export interface Opportunity {

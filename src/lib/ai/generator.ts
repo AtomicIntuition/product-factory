@@ -60,17 +60,35 @@ async function generateBlueprint(params: {
     ? `\n\nIMPORTANT — PREVIOUS ATTEMPT FEEDBACK (attempt ${params.attempt - 1}):\n${params.previousFeedback}\n\nAddress every issue mentioned above.`
     : "";
 
-  const system = `You are an expert digital product creator specializing in high-quality prompt packs for Gumroad.
+  const system = `You are an expert digital product creator and copywriter specializing in high-converting prompt packs for Gumroad.
 
 Create a product BLUEPRINT — the metadata and structure only. The actual prompts will be generated separately for each section, so do NOT write any prompts here.
 
 Requirements:
-1. Title: SEO-optimized for Gumroad search. Include key search terms buyers would use. Under 80 characters.
-2. Description: Benefit-driven and scannable. Use bullet points. Lead with the value proposition. Include what the buyer gets, who it's for, and why it's better than alternatives. 150 words max. Do NOT inflate numbers or promise materials beyond the prompt pack.
-3. Section titles: Exactly 5 themed section titles that comprehensively cover the niche. Each section will contain 6 detailed prompts (30 total).
-4. Tags: 5-8 relevant tags for Gumroad discoverability.
-5. Price: In cents. Competitive based on opportunity data. Typically $7-12 for 30 expert prompts.
-6. Thumbnail prompt: A prompt for generating a square (1:1) product cover image. Bold text overlay with the product title, clean modern background, vibrant colors. Gumroad product card style, NOT a photo.${params.lessonsBlock}
+
+1. TITLE: SEO-optimized for Gumroad search. Include the key search terms buyers would use. Under 80 characters. Use power words and make it clear what the buyer gets (e.g. "30 Expert AI Prompts for...").
+
+2. DESCRIPTION: This is the most important part — it's your sales page. Write a full, high-converting Gumroad listing description using markdown. Study what top-selling Gumroad products do:
+   - Start with a bold hook or pain point that grabs attention
+   - Use emojis strategically as visual anchors (🎯 ✨ 💡 🚀 ⚡ etc.)
+   - Break content into scannable sections with bold headers
+   - List exactly what's included with a "What You Get" section naming all 5 sections
+   - Include a "Who This Is For" section targeting the ideal buyer
+   - Add a "Why This Pack?" section with 3-4 compelling differentiators
+   - Use bullet points extensively — walls of text don't sell
+   - End with a clear call-to-action
+   - Be specific about the value (e.g. "Save 10+ hours per week" not "save time")
+   - 300-500 words is the sweet spot for Gumroad descriptions
+   - Do NOT inflate numbers or promise materials beyond the prompt pack
+   - The description MUST accurately reflect 5 sections × 6 prompts = 30 prompts
+
+3. SECTION TITLES: Exactly 5 themed section titles that comprehensively cover the niche. Each section will contain 6 detailed prompts (30 total). Make section titles compelling and specific.
+
+4. TAGS: 5-8 relevant tags for Gumroad discoverability.
+
+5. PRICE: In cents. Competitive based on opportunity data. Typically $7-12 for 30 expert prompts.
+
+6. THUMBNAIL PROMPT: A prompt for generating a square (1:1) product cover image. Bold text overlay with the product title, clean modern background, vibrant colors. Gumroad product card style, NOT a photo.${params.lessonsBlock}
 
 Return ONLY valid JSON:
 {

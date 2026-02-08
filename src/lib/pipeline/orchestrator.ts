@@ -63,6 +63,7 @@ export async function executeResearch(params: {
     const analysisResult = await analyzeOpportunities({
       researchData: productData,
       categories: researchResult.categories_analyzed,
+      topSellerPatterns: researchResult.top_seller_patterns,
     });
 
     // Save report

@@ -5,6 +5,7 @@ interface ResearchResult {
   products: GumroadProductData[];
   categories_analyzed: string[];
   raw_analysis: string;
+  top_seller_patterns: string;
 }
 
 export async function runResearch(params: {
@@ -20,7 +21,7 @@ export async function runResearch(params: {
       ? `\n\nInclude the following seed URLs in your analysis context as reference points for existing products:\n${params.seedUrls.map((url) => `- ${url}`).join("\n")}`
       : "";
 
-  const system = `You are an expert market researcher specializing in AI prompt packs on the Gumroad digital products marketplace. Your job is to analyze existing PROMPT PACK products on Gumroad and return structured data about the competitive landscape including pricing, ratings, categories, and market positioning.
+  const system = `You are an expert market researcher specializing in AI prompt packs on the Gumroad digital products marketplace. Your job is to analyze existing PROMPT PACK products on Gumroad and return structured data about the competitive landscape including pricing, ratings, categories, market positioning, and what makes top sellers succeed.
 
 IMPORTANT: Focus ONLY on prompt packs (ChatGPT prompts, Midjourney prompts, AI art prompts, business prompts, writing prompts, coding prompts, etc.). Do NOT research templates, courses, guides, software, or other product types. We only sell prompt packs.
 
@@ -38,14 +39,19 @@ You must return ONLY valid JSON with this exact structure:
       "seller_id": "string",
       "url": "string",
       "tags": ["string"],
-      "category": "string"
+      "category": "string",
+      "sales_estimate": "string (low/medium/high/very_high based on review count and visibility)",
+      "listing_quality": "string (poor/average/good/excellent — rate their title, description, and presentation)"
     }
   ],
   "categories_analyzed": ["string"],
-  "raw_analysis": "string (your high-level analysis of the prompt pack market)"
+  "raw_analysis": "string (your high-level analysis of the prompt pack market)",
+  "top_seller_patterns": "string (analyze what the best-selling prompt packs do differently in their listings: description length, formatting, emoji usage, section structure, hooks, calls-to-action, pricing psychology, and what makes buyers click 'buy')"
 }
 
-Analyze at least 15-20 prompt pack products across different niches, price points, and popularity levels. Include both top performers and mid-tier products to give a complete picture. Ensure price_cents is the price in cents (e.g., $9.99 = 999). For ratings, use a 1-5 scale or null if unknown.`;
+Analyze at least 15-20 prompt pack products across different niches, price points, and popularity levels. Include both top performers and mid-tier products to give a complete picture. Ensure price_cents is the price in cents (e.g., $9.99 = 999). For ratings, use a 1-5 scale or null if unknown.
+
+Pay special attention to top sellers — what do their descriptions look like? How long are they? Do they use emojis, bold headers, bullet points? What's their pricing strategy? This intelligence will be used to create better products.`;
 
   const prompt = `Conduct a thorough market research analysis of AI prompt packs on the Gumroad marketplace.
 

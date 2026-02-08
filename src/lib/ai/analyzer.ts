@@ -23,6 +23,7 @@ interface AnalysisResult {
 export async function analyzeOpportunities(params: {
   researchData: GumroadProductData[];
   categories: string[];
+  topSellerPatterns?: string;
 }): Promise<AnalysisResult> {
   const system = `You are an expert market analyst specializing in AI prompt pack opportunities on Gumroad. Your job is to analyze market research data and identify gaps and underserved opportunities where a new prompt pack could succeed.
 
@@ -67,7 +68,7 @@ ${JSON.stringify(params.researchData, null, 2)}
 
 Identify gaps where buyer demand for prompt packs is underserved, where existing prompt packs are low quality or overpriced, and where a new prompt pack could deliver genuine value.
 
-For competitor_prices, list the actual prices (in cents) of the most relevant competing prompt packs from the data above.`;
+For competitor_prices, list the actual prices (in cents) of the most relevant competing prompt packs from the data above.${params.topSellerPatterns ? `\n\nTOP SELLER PATTERNS FROM RESEARCH:\n${params.topSellerPatterns}\n\nUse these patterns to inform your opportunity descriptions and rationale. Include specific listing copy advice in each opportunity's rationale (e.g., what hooks to use, what pain points to address, pricing psychology).` : ""}`;
 
   return promptClaude<AnalysisResult>({
     model: "opus",
