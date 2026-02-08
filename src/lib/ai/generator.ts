@@ -72,7 +72,7 @@ CRITICAL RULES FOR THE DESCRIPTION:
 - Do NOT claim per-section counts that exceed what you actually wrote. If a section has 8 prompts, say "8 prompts" not "80 prompts."
 - Honesty builds trust and prevents refunds. A well-described 35-prompt pack at $7 outsells a misleading "800+ prompt" pack at $29 that gets refunded.
 
-OUTPUT SIZE LIMIT: Your entire JSON response must fit within 8000 tokens. Be ruthlessly concise:
+OUTPUT SIZE LIMIT: Your entire JSON response should fit within 10000 tokens. Be concise:
 - Each prompt: 1-2 sentences only. No introductions or explanations within prompts.
 - Description: 150 words max. Bullet points only.
 - Thumbnail prompt: 1-2 sentences.
@@ -116,7 +116,7 @@ Create a comprehensive, genuinely valuable product that buyers would recommend t
     model: "sonnet",
     system,
     prompt,
-    maxTokens: 12288,
+    maxTokens: 16384,
     onProgress: params.onProgress,
   });
 }
