@@ -60,9 +60,9 @@ export async function generateProduct(params: {
 Requirements for the product:
 1. Title: SEO-optimized for Gumroad search. Include the key search terms buyers would use. Under 80 characters.
 2. Description: Benefit-driven and scannable. Use bullet points. Lead with the value proposition. Include what the buyer gets, who it's for, and why it's better than alternatives.
-3. Content: Create a prompt pack with 5 themed sections, each with 5-6 prompts (25-30 total). Each prompt MUST be 1-2 sentences MAX. No preamble, no explanation — just the ready-to-use prompt text.
+3. Content: Create a prompt pack with 5 themed sections, each with 5 prompts (25 total). Each prompt MUST be 1-2 sentences and under 40 words. No preamble, no explanation — just the ready-to-use prompt text.
 4. Tags: 5-8 relevant tags for Gumroad discoverability.
-5. Price: Set in cents. Should be competitive based on the opportunity data. Price appropriately for 30-40 prompts — typically $5-12.
+5. Price: Set in cents. Should be competitive based on the opportunity data. Price appropriately for 25 prompts — typically $5-9.
 6. Thumbnail prompt: A prompt for generating a square (1:1) product cover image. Design it as a digital product thumbnail — bold text overlay with the product title, clean modern background, vibrant colors. Think Gumroad product card, NOT a landscape photo. Always specify "square format, 1:1 aspect ratio" in the prompt.
 
 CRITICAL RULES FOR THE DESCRIPTION:
@@ -72,11 +72,14 @@ CRITICAL RULES FOR THE DESCRIPTION:
 - Do NOT claim per-section counts that exceed what you actually wrote. If a section has 8 prompts, say "8 prompts" not "80 prompts."
 - Honesty builds trust and prevents refunds. A well-described 35-prompt pack at $7 outsells a misleading "800+ prompt" pack at $29 that gets refunded.
 
-OUTPUT SIZE LIMIT: Your entire JSON response should fit within 10000 tokens. Be concise:
-- Each prompt: 1-2 sentences only. No introductions or explanations within prompts.
-- Description: 150 words max. Bullet points only.
-- Thumbnail prompt: 1-2 sentences.
-- No extra whitespace or formatting in JSON.${lessonsBlock}
+CRITICAL OUTPUT SIZE LIMIT — YOU WILL BE CUT OFF IF YOU EXCEED THIS:
+- Total output must be under 6000 tokens. This is a HARD LIMIT.
+- Each prompt: 1-2 sentences, max 40 words. No introductions, no explanations.
+- Description: 100 words max. Bullet points only.
+- Thumbnail prompt: 1 sentence.
+- Exactly 5 sections × 5 prompts = 25 prompts. No more.
+- No extra whitespace, no markdown formatting in JSON values.
+- Return ONLY the JSON object. No text before or after it.${lessonsBlock}
 
 Return ONLY valid JSON with this exact structure:
 {
@@ -112,11 +115,25 @@ This is generation attempt ${params.attempt} of 3.${feedbackContext}
 
 Create a comprehensive, genuinely valuable product that buyers would recommend to others. Every prompt must be specific, detailed, and immediately usable. No generic filler content.`;
 
-  return promptClaude<GeneratedProduct>({
+  const result = await promptClaude<GeneratedProduct>({
     model: "sonnet",
     system,
     prompt,
     maxTokens: 16384,
     onProgress: params.onProgress,
   });
+
+  // Fix total_prompts to match actual content (important if JSON was truncated)
+  const actualCount = result.content.sections.reduce(
+    (sum, s) => sum + (s.prompts?.length ?? 0),
+    0,
+  );
+  if (actualCount !== result.content.total_prompts) {
+    console.warn(
+      `[generator] Fixing total_prompts: claimed ${result.content.total_prompts}, actual ${actualCount}`,
+    );
+    result.content.total_prompts = actualCount;
+  }
+
+  return result;
 }
