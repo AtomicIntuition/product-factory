@@ -42,8 +42,8 @@ export async function promptClaude<T>(params: {
   });
 
   if (response.stop_reason === "max_tokens") {
-    console.warn(
-      `[ai] Response was truncated at ${maxTokens} tokens. Attempting to salvage partial JSON...`,
+    throw new Error(
+      `Claude response was truncated (hit max_tokens limit of ${maxTokens}). Increase maxTokens or reduce expected output size.`,
     );
   }
 
@@ -52,8 +52,7 @@ export async function promptClaude<T>(params: {
     throw new Error("No text response from Claude");
   }
 
-  const wasTruncated = response.stop_reason === "max_tokens";
-  return parseJsonResponse<T>(textBlock.text, wasTruncated);
+  return parseJsonResponse<T>(textBlock.text);
 }
 
 async function streamClaude<T>(params: {
@@ -89,8 +88,8 @@ async function streamClaude<T>(params: {
   const finalMessage = await stream.finalMessage();
 
   if (finalMessage.stop_reason === "max_tokens") {
-    console.warn(
-      `[ai] Response was truncated at ${params.maxTokens} tokens. Attempting to salvage partial JSON...`,
+    throw new Error(
+      `Claude response was truncated (hit max_tokens limit of ${params.maxTokens}). Increase maxTokens or reduce expected output size.`,
     );
   }
 
@@ -98,40 +97,10 @@ async function streamClaude<T>(params: {
     params.onProgress(100);
   }
 
-  const wasTruncated = finalMessage.stop_reason === "max_tokens";
-  return parseJsonResponse<T>(fullText, wasTruncated);
+  return parseJsonResponse<T>(fullText);
 }
 
-function repairTruncatedJson(text: string): string {
-  // Remove any trailing incomplete string value (cut mid-string)
-  let str = text.replace(/,\s*"[^"]*$/, "");
-  str = str.replace(/:\s*"[^"]*$/, ': ""');
-
-  // Count open/close brackets and braces
-  let braces = 0;
-  let brackets = 0;
-  let inString = false;
-  let escape = false;
-
-  for (const ch of str) {
-    if (escape) { escape = false; continue; }
-    if (ch === "\\") { escape = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
-    if (inString) continue;
-    if (ch === "{") braces++;
-    if (ch === "}") braces--;
-    if (ch === "[") brackets++;
-    if (ch === "]") brackets--;
-  }
-
-  // Close any open structures
-  while (brackets > 0) { str += "]"; brackets--; }
-  while (braces > 0) { str += "}"; braces--; }
-
-  return str;
-}
-
-function parseJsonResponse<T>(text: string, wasTruncated = false): T {
+function parseJsonResponse<T>(text: string): T {
   let jsonStr = text.trim();
 
   // Try multiple fence patterns
@@ -155,20 +124,9 @@ function parseJsonResponse<T>(text: string, wasTruncated = false): T {
     }
   }
 
-  // First attempt: parse as-is
   try {
     return JSON.parse(jsonStr) as T;
   } catch {
-    // If truncated, try to repair the JSON
-    if (wasTruncated) {
-      try {
-        const repaired = repairTruncatedJson(jsonStr);
-        console.warn(`[ai] Repaired truncated JSON (added closing brackets). Parsing...`);
-        return JSON.parse(repaired) as T;
-      } catch {
-        throw new Error(`Failed to repair truncated JSON response. First 500 chars: ${text.slice(0, 500)}`);
-      }
-    }
     throw new Error(`Failed to parse Claude response as JSON: ${text.slice(0, 500)}`);
   }
 }

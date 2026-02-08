@@ -24,12 +24,131 @@ export interface GeneratedProduct {
   thumbnail_prompt: string;
 }
 
+// Phase 1 output: product metadata + section plan
+interface ProductBlueprint {
+  product_type: string;
+  title: string;
+  description: string;
+  section_titles: string[];
+  tags: string[];
+  price_cents: number;
+  currency: string;
+  thumbnail_prompt: string;
+}
+
+// Phase 2 output: a single section's prompts
+interface SectionOutput {
+  title: string;
+  prompts: string[];
+}
+
 function formatLessonsBlock(lessons: Lesson[]): string {
   if (lessons.length === 0) return "";
   const lines = lessons.map(
     (l, i) => `${i + 1}. [severity ${l.severity}] ${l.lesson}`,
   );
   return `\n\nLESSONS FROM PREVIOUS PRODUCTS (follow these strictly):\n${lines.join("\n")}`;
+}
+
+async function generateBlueprint(params: {
+  opportunity: Opportunity;
+  attempt: number;
+  previousFeedback?: string;
+  lessonsBlock: string;
+}): Promise<ProductBlueprint> {
+  const feedbackContext = params.previousFeedback
+    ? `\n\nIMPORTANT — PREVIOUS ATTEMPT FEEDBACK (attempt ${params.attempt - 1}):\n${params.previousFeedback}\n\nAddress every issue mentioned above.`
+    : "";
+
+  const system = `You are an expert digital product creator specializing in high-quality prompt packs for Gumroad.
+
+Create a product BLUEPRINT — the metadata and structure only. The actual prompts will be generated separately for each section, so do NOT write any prompts here.
+
+Requirements:
+1. Title: SEO-optimized for Gumroad search. Include key search terms buyers would use. Under 80 characters.
+2. Description: Benefit-driven and scannable. Use bullet points. Lead with the value proposition. Include what the buyer gets, who it's for, and why it's better than alternatives. 150 words max. Do NOT inflate numbers or promise materials beyond the prompt pack.
+3. Section titles: Exactly 5 themed section titles that comprehensively cover the niche. Each section will contain 6 detailed prompts (30 total).
+4. Tags: 5-8 relevant tags for Gumroad discoverability.
+5. Price: In cents. Competitive based on opportunity data. Typically $7-12 for 30 expert prompts.
+6. Thumbnail prompt: A prompt for generating a square (1:1) product cover image. Bold text overlay with the product title, clean modern background, vibrant colors. Gumroad product card style, NOT a photo.${params.lessonsBlock}
+
+Return ONLY valid JSON:
+{
+  "product_type": "prompt_pack",
+  "title": "string",
+  "description": "string (full Gumroad listing description with markdown)",
+  "section_titles": ["string", "string", "string", "string", "string"],
+  "tags": ["string"],
+  "price_cents": number,
+  "currency": "usd",
+  "thumbnail_prompt": "string"
+}`;
+
+  const prompt = `Create a product blueprint for this opportunity:
+
+Niche: ${params.opportunity.niche}
+Product type: ${params.opportunity.product_type}
+Description: ${params.opportunity.description}
+Rationale: ${params.opportunity.rationale}
+Suggested price: $${(params.opportunity.suggested_price_cents / 100).toFixed(2)}
+Competitor prices: ${params.opportunity.competitor_prices.map((p) => `$${(p / 100).toFixed(2)}`).join(", ")}
+
+This is generation attempt ${params.attempt} of 3.${feedbackContext}`;
+
+  return promptClaude<ProductBlueprint>({
+    model: "opus",
+    system,
+    prompt,
+    maxTokens: 4096,
+  });
+}
+
+async function generateSection(params: {
+  sectionTitle: string;
+  sectionIndex: number;
+  totalSections: number;
+  productTitle: string;
+  niche: string;
+  productDescription: string;
+  allSectionTitles: string[];
+  lessonsBlock: string;
+}): Promise<SectionOutput> {
+  const system = `You are an expert prompt engineer creating a section of a premium AI prompt pack called "${params.productTitle}".
+
+You are writing Section ${params.sectionIndex + 1} of ${params.totalSections}: "${params.sectionTitle}"
+
+The full product has these sections:
+${params.allSectionTitles.map((t, i) => `${i + 1}. ${t}${i === params.sectionIndex ? " ← YOU ARE WRITING THIS ONE" : ""}`).join("\n")}
+
+Requirements:
+- Write exactly 6 high-quality, ready-to-use AI prompts for this section.
+- Each prompt must be specific, actionable, and immediately usable by the buyer.
+- Each prompt should be 2-4 sentences. Include specific parameters, context, tone, and desired output format where relevant.
+- No generic filler. Every prompt must provide unique, expert-level value that justifies the price.
+- Prompts should cover different aspects of the section topic — no overlap.
+- Do NOT include numbering, labels, explanations, or preamble. Just the raw prompt text.
+- Stay focused on your section. Do NOT duplicate content that belongs in other sections.${params.lessonsBlock}
+
+Return ONLY valid JSON:
+{
+  "title": "${params.sectionTitle}",
+  "prompts": ["prompt 1", "prompt 2", "prompt 3", "prompt 4", "prompt 5", "prompt 6"]
+}`;
+
+  const prompt = `Write 6 expert-level prompts for the "${params.sectionTitle}" section.
+
+Product: ${params.productTitle}
+Niche: ${params.niche}
+Product description: ${params.productDescription}
+
+Make each prompt specific, detailed, and worth paying for. A buyer should feel this section alone justifies part of the price. These prompts should be things a professional in this niche would actually use daily.`;
+
+  return promptClaude<SectionOutput>({
+    model: "opus",
+    system,
+    prompt,
+    maxTokens: 4096,
+  });
 }
 
 export async function generateProduct(params: {
@@ -48,92 +167,70 @@ export async function generateProduct(params: {
   } catch (e) {
     console.error("[generator] Failed to fetch lessons, continuing without:", e);
   }
-
   const lessonsBlock = formatLessonsBlock(lessons);
 
-  const feedbackContext = params.previousFeedback
-    ? `\n\nIMPORTANT — PREVIOUS ATTEMPT FEEDBACK (attempt ${params.attempt - 1}):\nThe previous version of this product failed quality review. Here is the specific feedback you MUST address:\n${params.previousFeedback}\n\nFix every issue mentioned above. Do not repeat the same mistakes.`
-    : "";
+  // Phase 1: Generate blueprint (0-20%)
+  console.log(`[generator] Phase 1: Generating product blueprint with Opus...`);
+  params.onProgress?.(5);
 
-  const system = `You are an expert digital product creator specializing in high-quality prompt packs and digital toolkits for sale on Gumroad. Your products must be genuinely useful — specific, actionable, and worth paying for.
-
-Requirements for the product:
-1. Title: SEO-optimized for Gumroad search. Include the key search terms buyers would use. Under 80 characters.
-2. Description: Benefit-driven and scannable. Use bullet points. Lead with the value proposition. Include what the buyer gets, who it's for, and why it's better than alternatives.
-3. Content: Create a prompt pack with 5 themed sections, each with 5 prompts (25 total). Each prompt MUST be 1-2 sentences and under 40 words. No preamble, no explanation — just the ready-to-use prompt text.
-4. Tags: 5-8 relevant tags for Gumroad discoverability.
-5. Price: Set in cents. Should be competitive based on the opportunity data. Price appropriately for 25 prompts — typically $5-9.
-6. Thumbnail prompt: A prompt for generating a square (1:1) product cover image. Design it as a digital product thumbnail — bold text overlay with the product title, clean modern background, vibrant colors. Think Gumroad product card, NOT a landscape photo. Always specify "square format, 1:1 aspect ratio" in the prompt.
-
-CRITICAL RULES FOR THE DESCRIPTION:
-- The description MUST accurately reflect the ACTUAL content you generate. Do NOT inflate numbers.
-- Count your prompts as you write them. The number in the description MUST match total_prompts exactly.
-- Do NOT promise bonus materials, PDFs, guides, matrices, cheat sheets, or any deliverables beyond the prompt pack itself. The buyer receives ONLY the prompts you write in the sections array.
-- Do NOT claim per-section counts that exceed what you actually wrote. If a section has 8 prompts, say "8 prompts" not "80 prompts."
-- Honesty builds trust and prevents refunds. A well-described 35-prompt pack at $7 outsells a misleading "800+ prompt" pack at $29 that gets refunded.
-
-CRITICAL OUTPUT SIZE LIMIT — YOU WILL BE CUT OFF IF YOU EXCEED THIS:
-- Total output must be under 6000 tokens. This is a HARD LIMIT.
-- Each prompt: 1-2 sentences, max 40 words. No introductions, no explanations.
-- Description: 100 words max. Bullet points only.
-- Thumbnail prompt: 1 sentence.
-- Exactly 5 sections × 5 prompts = 25 prompts. No more.
-- No extra whitespace, no markdown formatting in JSON values.
-- Return ONLY the JSON object. No text before or after it.${lessonsBlock}
-
-Return ONLY valid JSON with this exact structure:
-{
-  "product_type": "string",
-  "title": "string",
-  "description": "string (full Gumroad listing description with markdown)",
-  "content": {
-    "format": "prompt_pack",
-    "sections": [
-      {
-        "title": "string (section name)",
-        "prompts": ["string (complete, ready-to-use prompt)"]
-      }
-    ],
-    "total_prompts": number
-  },
-  "tags": ["string"],
-  "price_cents": number,
-  "currency": "usd",
-  "thumbnail_prompt": "string"
-}`;
-
-  const prompt = `Create a high-quality digital product for the following opportunity:
-
-Niche: ${params.opportunity.niche}
-Product type: ${params.opportunity.product_type}
-Description: ${params.opportunity.description}
-Rationale: ${params.opportunity.rationale}
-Suggested price: $${(params.opportunity.suggested_price_cents / 100).toFixed(2)}
-Competitor prices: ${params.opportunity.competitor_prices.map((p) => `$${(p / 100).toFixed(2)}`).join(", ")}
-
-This is generation attempt ${params.attempt} of 3.${feedbackContext}
-
-Create a comprehensive, genuinely valuable product that buyers would recommend to others. Every prompt must be specific, detailed, and immediately usable. No generic filler content.`;
-
-  const result = await promptClaude<GeneratedProduct>({
-    model: "sonnet",
-    system,
-    prompt,
-    maxTokens: 16384,
-    onProgress: params.onProgress,
+  const blueprint = await generateBlueprint({
+    opportunity: params.opportunity,
+    attempt: params.attempt,
+    previousFeedback: params.previousFeedback,
+    lessonsBlock,
   });
 
-  // Fix total_prompts to match actual content (important if JSON was truncated)
-  const actualCount = result.content.sections.reduce(
-    (sum, s) => sum + (s.prompts?.length ?? 0),
-    0,
-  );
-  if (actualCount !== result.content.total_prompts) {
-    console.warn(
-      `[generator] Fixing total_prompts: claimed ${result.content.total_prompts}, actual ${actualCount}`,
-    );
-    result.content.total_prompts = actualCount;
-  }
+  console.log(`[generator] Blueprint: "${blueprint.title}" — sections: ${blueprint.section_titles.join(", ")}`);
+  params.onProgress?.(20);
 
-  return result;
+  // Phase 2: Generate all sections in parallel (20-90%)
+  console.log(`[generator] Phase 2: Generating ${blueprint.section_titles.length} sections in parallel with Opus...`);
+
+  let completedSections = 0;
+  const sectionPromises = blueprint.section_titles.map((title, i) =>
+    generateSection({
+      sectionTitle: title,
+      sectionIndex: i,
+      totalSections: blueprint.section_titles.length,
+      productTitle: blueprint.title,
+      niche: params.opportunity.niche,
+      productDescription: blueprint.description,
+      allSectionTitles: blueprint.section_titles,
+      lessonsBlock,
+    }).then((section) => {
+      completedSections++;
+      const pct = 20 + Math.round((completedSections / blueprint.section_titles.length) * 70);
+      console.log(`[generator] Section ${completedSections}/${blueprint.section_titles.length} done: "${title}" (${section.prompts.length} prompts)`);
+      params.onProgress?.(pct);
+      return section;
+    }),
+  );
+
+  const sections = await Promise.all(sectionPromises);
+
+  // Phase 3: Assemble final product (90-100%)
+  console.log(`[generator] Phase 3: Assembling final product...`);
+  params.onProgress?.(95);
+
+  const totalPrompts = sections.reduce((sum, s) => sum + s.prompts.length, 0);
+
+  const product: GeneratedProduct = {
+    product_type: blueprint.product_type,
+    title: blueprint.title,
+    description: blueprint.description,
+    content: {
+      format: "prompt_pack",
+      sections,
+      total_prompts: totalPrompts,
+    },
+    tags: blueprint.tags,
+    price_cents: blueprint.price_cents,
+    currency: blueprint.currency,
+    thumbnail_prompt: blueprint.thumbnail_prompt,
+  };
+
+  console.log(`[generator] Complete: "${product.title}" — ${totalPrompts} prompts across ${sections.length} sections`);
+  params.onProgress?.(100);
+
+  return product;
 }
