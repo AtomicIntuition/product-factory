@@ -50,5 +50,6 @@ What reusable rules should the system learn from this result?`;
     system,
     prompt,
     maxTokens: 2048,
+    thinking: true,
   });
 }

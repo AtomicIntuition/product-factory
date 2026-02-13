@@ -11,10 +11,10 @@ An automated system that researches trending digital products on Gumroad, identi
 - **Language:** TypeScript (strict mode)
 - **Styling:** Tailwind CSS
 - **Database:** Supabase (PostgreSQL) for product tracking, sales analytics, pipeline state
-- **AI:** Anthropic Claude API (Opus 4.6 for research/analysis, Sonnet 4.5 for generation)
+- **AI:** Anthropic Claude API (Opus 4.6 for all phases: research, analysis, generation, QA)
 - **Images:** OpenAI gpt-image-1 for thumbnails (square 1:1, b64_json)
 - **PDF:** jsPDF for product PDF generation
-- **Marketplace:** Gumroad API for publishing and sales tracking
+- **Marketplace:** Gumroad (manual publish via dashboard assistant — API is read-only for products)
 - **Validation:** Zod for runtime validation of API responses and external data
 - **Bundler:** esbuild bundles shared src/lib/ code for the backend
 
@@ -32,8 +32,7 @@ Browser → Vercel (Next.js)                    Railway (Express)
            ├─ CRUD API routes (Supabase)         │
            ├─ POST /api/pipeline ──proxy──→ POST /api/pipeline
            │   (with x-backend-secret)           ├─ executeResearch()
-           │                                     ├─ executeGeneration() → executePostGeneration()
-           │                                     └─ executePublish()
+           │                                     └─ executeGeneration() → executePostGeneration()
            │                                     │
            └─── polls GET /api/pipeline ←── both read/write ──→ Supabase
 ```
@@ -41,11 +40,14 @@ Browser → Vercel (Next.js)                    Railway (Express)
 **Key design:** On Railway, `generate` runs `executeGeneration()` then `executePostGeneration()` sequentially in-process. No self-referencing fetch. No `after()`. No timeout limits.
 
 ### Pipeline Phases
-1. **RESEARCH** — Claude Opus analyzes Gumroad market data (~2 min)
+1. **RESEARCH** — Claude Opus analyzes Gumroad market data, top seller patterns (~2 min)
 2. **ANALYZE** — Claude Opus identifies gaps and scores opportunities (auto-runs after research)
-3. **GENERATE** — Claude Sonnet creates product content via streaming (~2-3 min)
+3. **GENERATE** — Claude Opus multi-call architecture (~2-3 min):
+   - Phase 1: Blueprint call (metadata, title, description, 5 section titles, tags, price, thumbnail prompt)
+   - Phase 2: 5 parallel Opus calls, one per section (6 prompts each = 30 total)
+   - Phase 3: Assembly into final product
 4. **POST-GENERATE** — QA evaluation (Opus) → lesson extraction → thumbnail (gpt-image-1) → PDF generation (auto-runs after generate)
-5. **PUBLISH** — Generate PDF, upload to Gumroad via API, set pricing, activate
+5. **PUBLISH** — Manual via dashboard publish assistant (Gumroad API has no product creation endpoint). User copies details, uploads files, pastes URL back.
 
 Each phase logs to `pipeline_runs` in Supabase. The dashboard auto-polls and shows live progress.
 
@@ -78,7 +80,7 @@ src/
 │   │   ├── evaluator.ts       # QA evaluation
 │   │   ├── lesson-extractor.ts # Extract lessons from QA
 │   │   └── thumbnail.ts       # gpt-image-1 thumbnail generation
-│   ├── gumroad/client.ts      # Gumroad API with retry + backoff
+│   ├── gumroad/client.ts      # Gumroad API (read-only: sales tracking)
 │   ├── pdf/generator.ts       # jsPDF product PDF
 │   ├── supabase/              # Database client and queries
 │   └── pipeline/orchestrator.ts # All execute*() functions
@@ -127,11 +129,12 @@ railway.toml                   # Railway config (Dockerfile path, health check)
 - ALWAYS run `npm run typecheck` after making code changes
 - ALWAYS run `cd backend && npm run build` after changing shared src/lib/ code
 - ALWAYS add Zod input validation when creating new API routes
-- ALWAYS handle Gumroad API rate limits with exponential backoff
 - ALWAYS validate Claude API output structure before proceeding in the pipeline
 - ALWAYS check `stop_reason` on Claude API responses to detect truncation
-- ALWAYS use streaming (`onProgress` callback) for generation to track progress
-- Generation maxTokens is 12288 (output budget ~8000 tokens, 25-30 prompts)
+- Generation uses multi-call Opus architecture (7 calls total: 1 blueprint + 5 sections + 1 QA). Each call uses maxTokens: 4096. Zero truncation risk.
+- Product is exactly 30 prompts (5 sections × 6 prompts). Title MUST say "30" — never inflate numbers.
+- Research intelligence (top seller patterns) flows through report summary into generator blueprint.
 - Max 5 lessons injected into generator prompt to avoid token bloat
 - Thumbnails: gpt-image-1, 1024x1024, square format, b64_json
 - PDF generated during post-generation (preview before publish)
+- Publishing is manual — Gumroad API has no POST /products endpoint. Dashboard has assisted publish flow.

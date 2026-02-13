@@ -69,6 +69,7 @@ Evaluate this product rigorously. Would YOU pay $${(product.price_cents / 100).t
     system,
     prompt,
     maxTokens: 4096,
+    thinking: true,
   });
 
   return result;

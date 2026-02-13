@@ -79,5 +79,6 @@ For top_seller_patterns, study the best performers like a copywriter would: brea
     system,
     prompt,
     maxTokens: 16384,
+    thinking: true,
   });
 }

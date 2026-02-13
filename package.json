@@ -13,7 +13,7 @@
     "typecheck:backend": "cd backend && npm run typecheck"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.73.0",
+    "@anthropic-ai/sdk": "^0.74.0",
     "@supabase/supabase-js": "^2.95.3",
     "jspdf": "^4.1.0",
     "next": "^16.1.6",

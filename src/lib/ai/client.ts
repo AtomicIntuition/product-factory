@@ -12,11 +12,12 @@ export function getAnthropicClient(): Anthropic {
   return _client;
 }
 
-export type ModelTier = "opus" | "sonnet";
+export type ModelTier = "opus" | "sonnet" | "haiku";
 
 const MODEL_MAP: Record<ModelTier, string> = {
   opus: "claude-opus-4-6",
   sonnet: "claude-sonnet-4-5-20250929",
+  haiku: "claude-haiku-4-5-20251001",
 };
 
 export async function promptClaude<T>(params: {
@@ -24,6 +25,7 @@ export async function promptClaude<T>(params: {
   system: string;
   prompt: string;
   maxTokens?: number;
+  thinking?: boolean;
   onProgress?: (pct: number) => void;
 }): Promise<T> {
   const client = getAnthropicClient();
@@ -34,11 +36,16 @@ export async function promptClaude<T>(params: {
     return streamClaude<T>({ ...params, maxTokens });
   }
 
+  const thinkingConfig = params.thinking
+    ? { thinking: { type: "adaptive" as const } }
+    : {};
+
   const response = await client.messages.create({
     model: MODEL_MAP[params.model],
     max_tokens: maxTokens,
     system: params.system,
     messages: [{ role: "user", content: params.prompt }],
+    ...thinkingConfig,
   });
 
   if (response.stop_reason === "max_tokens") {

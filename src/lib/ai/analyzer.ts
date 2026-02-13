@@ -75,5 +75,6 @@ For competitor_prices, list the actual prices (in cents) of the most relevant co
     system,
     prompt,
     maxTokens: 8192,
+    thinking: true,
   });
 }

@@ -121,6 +121,7 @@ This is generation attempt ${params.attempt} of 3.${feedbackContext}`;
     system,
     prompt,
     maxTokens: 4096,
+    thinking: true,
   });
 }
 
