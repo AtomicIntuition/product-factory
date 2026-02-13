@@ -36,13 +36,19 @@ export async function promptClaude<T>(params: {
     return streamClaude<T>({ ...params, maxTokens });
   }
 
+  // When thinking is enabled, budget_tokens controls thinking and max_tokens
+  // must cover BOTH thinking + response. We add the thinking budget on top
+  // so the output portion always has the full maxTokens available.
+  const thinkingBudget = 8192;
   const thinkingConfig = params.thinking
-    ? { thinking: { type: "adaptive" as const } }
-    : {};
+    ? {
+        thinking: { type: "enabled" as const, budget_tokens: thinkingBudget },
+        max_tokens: maxTokens + thinkingBudget,
+      }
+    : { max_tokens: maxTokens };
 
   const response = await client.messages.create({
     model: MODEL_MAP[params.model],
-    max_tokens: maxTokens,
     system: params.system,
     messages: [{ role: "user", content: params.prompt }],
     ...thinkingConfig,
