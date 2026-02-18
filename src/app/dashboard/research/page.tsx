@@ -46,7 +46,7 @@ export default function ResearchPage(): React.ReactElement {
   const [researchLoading, setResearchLoading] = useState(false);
   const [nicheInput, setNicheInput] = useState("");
 
-  const [seedUrls, setSeedUrls] = useState("");
+  const [seedKeywords, setSeedKeywords] = useState("");
   const [seedLoading, setSeedLoading] = useState(false);
   const [seedSuccess, setSeedSuccess] = useState(false);
 
@@ -94,26 +94,27 @@ export default function ResearchPage(): React.ReactElement {
   }
 
   async function handleSubmitSeeds() {
-    if (!seedUrls.trim()) return;
+    if (!seedKeywords.trim()) return;
     setSeedLoading(true);
     setSeedSuccess(false);
     setError(null);
     try {
-      const urls = seedUrls
+      const keywords = seedKeywords
         .split("\n")
-        .map((u) => u.trim())
+        .map((k) => k.trim())
         .filter(Boolean);
-      const res = await fetch("/api/research/seeds", {
+      const res = await fetch("/api/pipeline", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ urls }),
+        body: JSON.stringify({ action: "research", params: { keywords } }),
       });
-      if (!res.ok) throw new Error("Failed to submit seed URLs");
-      setSeedUrls("");
+      if (!res.ok) throw new Error("Failed to start keyword research");
+      setSeedKeywords("");
       setSeedSuccess(true);
       setTimeout(() => setSeedSuccess(false), 3000);
+      await fetchReports();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to submit seeds");
+      setError(err instanceof Error ? err.message : "Failed to submit keywords");
     } finally {
       setSeedLoading(false);
     }
@@ -177,7 +178,7 @@ export default function ResearchPage(): React.ReactElement {
               type="text"
               value={nicheInput}
               onChange={(e) => setNicheInput(e.target.value)}
-              placeholder="e.g. productivity templates"
+              placeholder="e.g. budget tracker, inventory"
               className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 w-64"
             />
           </div>
@@ -224,33 +225,32 @@ export default function ResearchPage(): React.ReactElement {
         </div>
       )}
 
-      {/* Add Seed URLs */}
+      {/* Keyword Research */}
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
         <h2 className="text-lg font-semibold text-white mb-3">
-          Add Seed URLs
+          Keyword Research
         </h2>
         <p className="text-sm text-gray-400 mb-3">
-          Paste Gumroad product URLs (one per line) to seed the research
-          pipeline.
+          Enter Etsy search keywords (one per line) to research specific spreadsheet template niches.
         </p>
         <textarea
-          value={seedUrls}
-          onChange={(e) => setSeedUrls(e.target.value)}
+          value={seedKeywords}
+          onChange={(e) => setSeedKeywords(e.target.value)}
           rows={4}
-          placeholder={"https://gumroad.com/l/example1\nhttps://gumroad.com/l/example2"}
+          placeholder={"budget tracker spreadsheet\nwedding planner template\ninventory management excel"}
           className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-y"
         />
         <div className="mt-3 flex items-center gap-3">
           <button
             onClick={handleSubmitSeeds}
-            disabled={seedLoading || !seedUrls.trim()}
+            disabled={seedLoading || !seedKeywords.trim()}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white font-medium rounded-lg transition-colors text-sm"
           >
-            {seedLoading ? "Submitting..." : "Submit Seeds"}
+            {seedLoading ? "Researching..." : "Research Keywords"}
           </button>
           {seedSuccess && (
             <span className="text-green-400 text-sm">
-              Seeds submitted successfully!
+              Research started successfully!
             </span>
           )}
         </div>

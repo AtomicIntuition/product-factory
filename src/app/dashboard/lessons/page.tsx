@@ -12,10 +12,10 @@ const SEVERITY_COLORS: Record<number, string> = {
 };
 
 const DIMENSION_COLORS: Record<string, string> = {
-  content_length: "bg-purple-600/20 text-purple-400",
-  uniqueness: "bg-cyan-600/20 text-cyan-400",
-  relevance: "bg-green-600/20 text-green-400",
-  quality: "bg-blue-600/20 text-blue-400",
+  structure_quality: "bg-purple-600/20 text-purple-400",
+  formula_correctness: "bg-cyan-600/20 text-cyan-400",
+  visual_design: "bg-green-600/20 text-green-400",
+  usability: "bg-blue-600/20 text-blue-400",
   listing_copy: "bg-pink-600/20 text-pink-400",
 };
 

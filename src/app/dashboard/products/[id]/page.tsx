@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import type { Product, ProductStatus } from "@/types";
+import type { Product, ProductStatus, SpreadsheetSpec } from "@/types";
 
 function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -22,6 +22,7 @@ function statusBadgeColor(status: ProductStatus): string {
     case "generating":
     case "qa_pending":
     case "qa_pass":
+    case "publishing":
       return "bg-yellow-600/20 text-yellow-400";
     case "qa_fail":
     case "publish_failed":
@@ -41,7 +42,7 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
 
   return (
     <div className="flex items-center gap-3">
-      <span className="text-sm text-gray-400 w-32 shrink-0">{label}</span>
+      <span className="text-sm text-gray-400 w-40 shrink-0">{label}</span>
       <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full ${barColor}`}
@@ -86,181 +87,58 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
-function PublishAssistant({
-  product,
-  onPublished,
-}: {
-  product: Product;
-  onPublished: (url: string) => void;
-}) {
-  const [gumroadUrl, setGumroadUrl] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [step, setStep] = useState(1);
-
-  async function handleMarkPublished(): Promise<void> {
-    if (!gumroadUrl.trim()) return;
-    setSaving(true);
-    try {
-      onPublished(gumroadUrl.trim());
-    } finally {
-      setSaving(false);
-    }
-  }
+function SpreadsheetPreview({ content }: { content: Record<string, unknown> }) {
+  const spec = content as unknown as SpreadsheetSpec;
+  if (!spec?.sheets) return null;
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-      <h2 className="text-lg font-semibold text-white mb-2">Publish to Gumroad</h2>
-      <p className="text-sm text-gray-400 mb-6">
-        Follow these steps to publish your product. Everything is ready — just copy, paste, and go.
-      </p>
-
-      {/* Step 1: Open Gumroad */}
-      <div className={`mb-6 ${step >= 1 ? "opacity-100" : "opacity-50"}`}>
-        <div className="flex items-center gap-3 mb-3">
-          <span className="flex items-center justify-center w-7 h-7 rounded-full bg-blue-600 text-white text-sm font-bold">1</span>
-          <h3 className="text-sm font-semibold text-white">Open Gumroad</h3>
-        </div>
-        <a
-          href="https://app.gumroad.com/products/new"
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={() => setStep(Math.max(step, 2))}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-medium rounded-lg transition-colors text-sm"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-          </svg>
-          Create New Product on Gumroad
-        </a>
-      </div>
-
-      {/* Step 2: Copy product details */}
-      <div className={`mb-6 ${step >= 2 ? "opacity-100" : "opacity-50"}`}>
-        <div className="flex items-center gap-3 mb-3">
-          <span className={`flex items-center justify-center w-7 h-7 rounded-full ${step >= 2 ? "bg-blue-600" : "bg-gray-700"} text-white text-sm font-bold`}>2</span>
-          <h3 className="text-sm font-semibold text-white">Copy product details into Gumroad</h3>
-        </div>
-        <div className="space-y-4 pl-10">
-          {/* Name */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs text-gray-400 font-medium uppercase tracking-wide">Product Name</label>
-              <CopyButton text={product.title} label="Copy" />
-            </div>
-            <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200">
-              {product.title}
-            </div>
+    <div className="space-y-4">
+      {spec.sheets.map((sheet, i) => (
+        <div key={i} className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm font-medium text-gray-100">{sheet.name}</span>
+            {sheet.is_instructions && (
+              <span className="text-xs bg-blue-600/20 text-blue-400 px-2 py-0.5 rounded-full">Instructions</span>
+            )}
           </div>
-
-          {/* Price */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs text-gray-400 font-medium uppercase tracking-wide">Price</label>
-              <CopyButton text={(product.price_cents / 100).toFixed(2)} label="Copy" />
-            </div>
-            <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200">
-              {formatCents(product.price_cents)}
-            </div>
+          <p className="text-xs text-gray-400 mb-2">{sheet.purpose}</p>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className="text-gray-500">{sheet.columns.length} columns</span>
+            <span className="text-gray-600">|</span>
+            <span className="text-gray-500">{sheet.rows.length} rows</span>
+            <span className="text-gray-600">|</span>
+            <span className="text-gray-500">
+              {sheet.rows.flatMap(r => Object.values(r.cells).filter(c => c.formula)).length} formulas
+            </span>
+            {sheet.frozen.rows > 0 && (
+              <>
+                <span className="text-gray-600">|</span>
+                <span className="text-gray-500">frozen: {sheet.frozen.rows}R</span>
+              </>
+            )}
           </div>
-
-          {/* Description */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs text-gray-400 font-medium uppercase tracking-wide">Description</label>
-              <CopyButton text={product.description} label="Copy" />
-            </div>
-            <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 max-h-48 overflow-y-auto whitespace-pre-wrap">
-              {product.description}
-            </div>
-          </div>
-
-          {/* Tags */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs text-gray-400 font-medium uppercase tracking-wide">Tags (add each one)</label>
-              <CopyButton text={product.tags.join(", ")} label="Copy All" />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {product.tags.map((tag) => (
-                <div key={tag} className="flex items-center gap-1.5 bg-gray-800 border border-gray-700 rounded-lg px-2.5 py-1.5">
-                  <span className="text-sm text-gray-200">{tag}</span>
-                  <CopyButton text={tag} label="" />
-                </div>
+          {sheet.columns.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {sheet.columns.map((col) => (
+                <span key={col.letter} className="text-xs bg-gray-700 text-gray-300 px-2 py-0.5 rounded">
+                  {col.letter}: {col.header}
+                </span>
               ))}
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Step 3: Upload files */}
-      <div className={`mb-6 ${step >= 2 ? "opacity-100" : "opacity-50"}`}>
-        <div className="flex items-center gap-3 mb-3">
-          <span className={`flex items-center justify-center w-7 h-7 rounded-full ${step >= 2 ? "bg-blue-600" : "bg-gray-700"} text-white text-sm font-bold`}>3</span>
-          <h3 className="text-sm font-semibold text-white">Upload files to Gumroad</h3>
-        </div>
-        <div className="space-y-3 pl-10">
-          {product.content_file_url && (
-            <a
-              href={product.content_file_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => setStep(Math.max(step, 3))}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-700 text-blue-400 rounded-lg transition-colors text-sm"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Download PDF (product file)
-            </a>
           )}
-          {product.thumbnail_url && (
-            <a
-              href={product.thumbnail_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => setStep(Math.max(step, 3))}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-700 text-purple-400 rounded-lg transition-colors text-sm"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              Download Thumbnail (cover image)
-            </a>
-          )}
-          <p className="text-xs text-gray-500">
-            Upload the PDF as the product file and the thumbnail as the cover image in Gumroad.
-          </p>
         </div>
-      </div>
-
-      {/* Step 4: Paste URL back */}
-      <div className={`${step >= 2 ? "opacity-100" : "opacity-50"}`}>
-        <div className="flex items-center gap-3 mb-3">
-          <span className={`flex items-center justify-center w-7 h-7 rounded-full ${step >= 3 ? "bg-blue-600" : "bg-gray-700"} text-white text-sm font-bold`}>4</span>
-          <h3 className="text-sm font-semibold text-white">Paste your Gumroad product URL</h3>
+      ))}
+      {spec.color_scheme && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">Colors:</span>
+          {Object.entries(spec.color_scheme).map(([key, color]) => (
+            <div key={key} className="flex items-center gap-1" title={key}>
+              <div className="w-4 h-4 rounded border border-gray-600" style={{ backgroundColor: color }} />
+              <span className="text-xs text-gray-600">{key.replace(/_/g, " ")}</span>
+            </div>
+          ))}
         </div>
-        <div className="pl-10">
-          <p className="text-xs text-gray-400 mb-2">
-            After publishing on Gumroad, paste the product URL here to mark it as published.
-          </p>
-          <div className="flex gap-2">
-            <input
-              type="url"
-              value={gumroadUrl}
-              onChange={(e) => setGumroadUrl(e.target.value)}
-              placeholder="https://yourusername.gumroad.com/l/product-name"
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-green-500"
-            />
-            <button
-              onClick={handleMarkPublished}
-              disabled={saving || !gumroadUrl.trim()}
-              className="px-5 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:hover:bg-green-600 text-white font-medium rounded-lg transition-colors text-sm whitespace-nowrap"
-            >
-              {saving ? "Saving..." : "Mark as Published"}
-            </button>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -278,6 +156,7 @@ export default function ProductDetailPage({
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [showContent, setShowContent] = useState(false);
+  const [publishProgress, setPublishProgress] = useState<string | null>(null);
 
   // Editable fields
   const [editTitle, setEditTitle] = useState("");
@@ -331,16 +210,16 @@ export default function ProductDetailPage({
     setActionLoading(true);
     setError(null);
     try {
-      const params: Record<string, unknown> = { productId: id };
+      const actionParams: Record<string, unknown> = { productId: id };
       if (action === "generate" && product) {
-        params.opportunityId = product.opportunity_id;
-        params.reportId = product.report_id;
-        params.opportunity = product;
+        actionParams.opportunityId = product.opportunity_id;
+        actionParams.reportId = product.report_id;
+        actionParams.opportunity = product;
       }
       const res = await fetch("/api/pipeline", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, params }),
+        body: JSON.stringify({ action, params: actionParams }),
       });
       if (!res.ok) throw new Error(`Failed to run ${action}`);
 
@@ -355,11 +234,54 @@ export default function ProductDetailPage({
     }
   }
 
-  async function handlePublished(gumroadUrl: string) {
-    await handlePatch({
-      gumroad_url: gumroadUrl,
-      status: "published" as ProductStatus,
-    });
+  async function handlePublishToEtsy() {
+    setActionLoading(true);
+    setError(null);
+    setPublishProgress("Creating draft listing...");
+    try {
+      const res = await fetch("/api/pipeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "publish", params: { productId: id } }),
+      });
+      if (!res.ok) throw new Error("Failed to start publishing");
+
+      setPublishProgress("Publishing in progress... This may take a minute.");
+
+      // Poll for completion
+      const pollInterval = setInterval(async () => {
+        try {
+          const productRes = await fetch(`/api/products/${id}`);
+          if (productRes.ok) {
+            const updated: Product = await productRes.json();
+            setProduct(updated);
+            if (updated.status === "published") {
+              setPublishProgress(null);
+              clearInterval(pollInterval);
+              setActionLoading(false);
+            } else if (updated.status === "publish_failed") {
+              setPublishProgress(null);
+              setError("Publishing failed. Check the product status for details.");
+              clearInterval(pollInterval);
+              setActionLoading(false);
+            }
+          }
+        } catch {
+          // Ignore poll errors
+        }
+      }, 5000);
+
+      // Safety timeout
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setActionLoading(false);
+        setPublishProgress(null);
+      }, 120000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Publish failed");
+      setActionLoading(false);
+      setPublishProgress(null);
+    }
   }
 
   async function handleSave() {
@@ -424,7 +346,7 @@ export default function ProductDetailPage({
     );
   }
 
-  const showPublishAssistant = product.status === "approved" || product.status === "publish_failed" || product.status === "ready_for_review";
+  const showPublishButton = product.status === "approved" || product.status === "publish_failed" || product.status === "ready_for_review";
 
   return (
     <div className="space-y-8 max-w-4xl">
@@ -433,18 +355,8 @@ export default function ProductDetailPage({
         onClick={() => router.push("/dashboard/products")}
         className="text-sm text-gray-400 hover:text-gray-200 transition-colors flex items-center gap-1"
       >
-        <svg
-          className="w-4 h-4"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M15 19l-7-7 7-7"
-          />
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
         </svg>
         Back to Products
       </button>
@@ -452,6 +364,16 @@ export default function ProductDetailPage({
       {error && (
         <div className="bg-red-900/30 border border-red-700 text-red-300 px-4 py-3 rounded-lg text-sm">
           {error}
+        </div>
+      )}
+
+      {publishProgress && (
+        <div className="bg-yellow-900/30 border border-yellow-700 text-yellow-300 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
+          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          {publishProgress}
         </div>
       )}
 
@@ -479,14 +401,11 @@ export default function ProductDetailPage({
             </p>
           </div>
           <div>
-            <span className="text-gray-500">Tags</span>
+            <span className="text-gray-500">Tags ({product.tags.length}/13)</span>
             <div className="flex flex-wrap gap-1 mt-0.5">
               {product.tags.length > 0 ? (
                 product.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="bg-gray-800 text-gray-300 text-xs px-2 py-0.5 rounded"
-                  >
+                  <span key={tag} className="bg-gray-800 text-gray-300 text-xs px-2 py-0.5 rounded">
                     {tag}
                   </span>
                 ))
@@ -505,57 +424,94 @@ export default function ProductDetailPage({
           </div>
         </div>
 
-        {product.gumroad_url && (
+        {product.etsy_url && (
           <div className="mt-4 pt-4 border-t border-gray-800">
             <a
-              href={product.gumroad_url}
+              href={product.etsy_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-400 hover:text-blue-300 text-sm underline"
+              className="text-orange-400 hover:text-orange-300 text-sm underline"
             >
-              View on Gumroad
+              View on Etsy
             </a>
           </div>
         )}
       </div>
 
-      {/* Thumbnail + Download */}
-      {(product.thumbnail_url || product.content_file_url) && (
+      {/* Product Assets — Images Grid + Download */}
+      {(product.image_urls?.length > 0 || product.thumbnail_url || product.content_file_url) && (
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
           <h2 className="text-lg font-semibold text-white mb-4">Product Assets</h2>
-          <div className="flex flex-wrap gap-6">
-            {product.thumbnail_url && (
-              <div>
-                <p className="text-sm text-gray-400 mb-2">Thumbnail</p>
-                <img
-                  src={product.thumbnail_url}
-                  alt={`${product.title} thumbnail`}
-                  className="w-48 h-48 object-cover rounded-lg border border-gray-700"
-                />
-              </div>
-            )}
-            {product.content_file_url && (
-              <div className="flex items-end">
-                <a
-                  href={product.content_file_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-700 text-blue-400 rounded-lg transition-colors text-sm"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Download PDF
+
+          {/* Image Grid */}
+          {product.image_urls?.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-4">
+              {product.image_urls.map((url, i) => (
+                <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                  <img
+                    src={url}
+                    alt={`Listing image ${i + 1}`}
+                    className="w-full aspect-square object-cover rounded-lg border border-gray-700 hover:border-gray-500 transition-colors"
+                  />
                 </a>
-              </div>
-            )}
-          </div>
+              ))}
+            </div>
+          )}
+
+          {/* Fallback single thumbnail */}
+          {!product.image_urls?.length && product.thumbnail_url && (
+            <div className="mb-4">
+              <p className="text-sm text-gray-400 mb-2">Thumbnail</p>
+              <img
+                src={product.thumbnail_url}
+                alt={`${product.title} thumbnail`}
+                className="w-48 h-48 object-cover rounded-lg border border-gray-700"
+              />
+            </div>
+          )}
+
+          {/* Download Spreadsheet */}
+          {product.content_file_url && (
+            <a
+              href={product.content_file_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-green-600/20 hover:bg-green-600/30 border border-green-700 text-green-400 rounded-lg transition-colors text-sm"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Download Spreadsheet (.xlsx)
+            </a>
+          )}
         </div>
       )}
 
-      {/* Publish Assistant */}
-      {showPublishAssistant && product.status !== "published" && (
-        <PublishAssistant product={product} onPublished={handlePublished} />
+      {/* Publish to Etsy */}
+      {showPublishButton && product.status !== "published" && (
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
+          <h2 className="text-lg font-semibold text-white mb-2">Publish to Etsy</h2>
+          <p className="text-sm text-gray-400 mb-4">
+            Automatically creates a listing, uploads images and the spreadsheet file, and activates it on Etsy.
+          </p>
+          <button
+            onClick={handlePublishToEtsy}
+            disabled={actionLoading}
+            className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-60 text-white font-medium rounded-lg transition-colors text-sm flex items-center gap-2"
+          >
+            {actionLoading ? (
+              <>
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Publishing...
+              </>
+            ) : (
+              "Publish to Etsy"
+            )}
+          </button>
+        </div>
       )}
 
       {/* Action Buttons */}
@@ -629,10 +585,10 @@ export default function ProductDetailPage({
             Attempt {product.qa_score.attempt} of {product.qa_attempts}
           </p>
           <div className="space-y-3 mt-4">
-            <ScoreBar label="Content Length" value={product.qa_score.scores.content_length} />
-            <ScoreBar label="Uniqueness" value={product.qa_score.scores.uniqueness} />
-            <ScoreBar label="Relevance" value={product.qa_score.scores.relevance} />
-            <ScoreBar label="Quality" value={product.qa_score.scores.quality} />
+            <ScoreBar label="Structure Quality" value={product.qa_score.scores.structure_quality} />
+            <ScoreBar label="Formula Correctness" value={product.qa_score.scores.formula_correctness} />
+            <ScoreBar label="Visual Design" value={product.qa_score.scores.visual_design} />
+            <ScoreBar label="Usability" value={product.qa_score.scores.usability} />
             <ScoreBar label="Listing Copy" value={product.qa_score.scores.listing_copy} />
           </div>
           {product.qa_score.feedback && (
@@ -644,7 +600,7 @@ export default function ProductDetailPage({
         </div>
       )}
 
-      {/* Content Preview */}
+      {/* Spreadsheet Preview */}
       {product.content && Object.keys(product.content).length > 0 && (
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
           <button
@@ -659,12 +615,12 @@ export default function ProductDetailPage({
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-            Content Preview
+            Spreadsheet Preview
           </button>
           {showContent && (
-            <pre className="mt-4 bg-gray-800 border border-gray-700 rounded-lg p-4 text-sm text-gray-300 overflow-x-auto max-h-96 overflow-y-auto">
-              {JSON.stringify(product.content, null, 2)}
-            </pre>
+            <div className="mt-4">
+              <SpreadsheetPreview content={product.content} />
+            </div>
           )}
         </div>
       )}
@@ -672,13 +628,15 @@ export default function ProductDetailPage({
       {/* Thumbnail Prompt */}
       {product.thumbnail_prompt && (
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-          <h2 className="text-lg font-semibold text-white mb-2">Thumbnail Prompt</h2>
-          <p className="text-sm text-gray-400 mb-1">
-            {product.thumbnail_url ? "Generated from:" : "Thumbnail generation failed or was skipped. Prompt:"}
-          </p>
-          <p className="text-sm text-gray-300 bg-gray-800 border border-gray-700 rounded-lg p-4">
-            {product.thumbnail_prompt}
-          </p>
+          <h2 className="text-lg font-semibold text-white mb-2">Image Prompts</h2>
+          <div className="space-y-2">
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Main Cover</p>
+              <p className="text-sm text-gray-300 bg-gray-800 border border-gray-700 rounded-lg p-3">
+                {product.thumbnail_prompt}
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -715,7 +673,7 @@ export default function ProductDetailPage({
               />
             </div>
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Tags (comma-separated)</label>
+              <label className="block text-sm text-gray-400 mb-1">Tags (comma-separated, 13 max)</label>
               <input
                 type="text"
                 value={editTags}

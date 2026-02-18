@@ -13,21 +13,21 @@ export async function extractLessons(params: {
   niche: string;
   title: string;
 }): Promise<ExtractedLesson[]> {
-  const system = `You are a systems analyst extracting generalizable lessons from product QA results. Your job is to distill specific QA feedback into reusable rules that will prevent future products from making the same mistakes (or reinforce what worked well).
+  const system = `You are a systems analyst extracting generalizable lessons from spreadsheet template QA results. Your job is to distill specific QA feedback into reusable rules that will prevent future templates from making the same mistakes (or reinforce what worked well).
 
 Rules for writing lessons:
-1. Lessons must be GENERALIZABLE — not specific to one product or niche. Write rules that apply to ALL future products.
-2. BAD: "Add more illustration prompts" → GOOD: "Listing copy must not promise more content than actually delivered"
-3. BAD: "The photography section needs work" → GOOD: "Each section must have prompts of comparable depth and specificity"
+1. Lessons must be GENERALIZABLE — not specific to one product or niche. Write rules that apply to ALL future spreadsheet templates.
+2. BAD: "Add more budget categories" → GOOD: "Every data sheet must have at least 5 sample rows demonstrating realistic usage"
+3. BAD: "The expense tracker needs more formulas" → GOOD: "Total/summary rows must use formulas referencing the full expected data range, not just sample rows"
 4. For passing products, extract what made them succeed so it can be replicated.
 5. Each lesson should be a single clear imperative sentence.
-6. Severity 1-5: 1=minor style preference, 3=meaningful quality issue, 5=critical failure that would cause refunds.
+6. Severity 1-5: 1=minor style preference, 3=meaningful quality issue, 5=critical failure.
 
 Return ONLY valid JSON array:
 [
   {
     "lesson": "string (imperative sentence — a rule to follow)",
-    "dimension": "string or null (content_length | uniqueness | relevance | quality | listing_copy | null)",
+    "dimension": "string or null (structure_quality | formula_correctness | visual_design | usability | listing_copy | null)",
     "severity": number
   }
 ]

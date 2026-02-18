@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    env:
+      # Mock env vars — tests mock all external deps, but Zod env validation needs values
+      ANTHROPIC_API_KEY: test-key
+      ETSY_API_KEY: test-key
+      ETSY_SHARED_SECRET: test-secret
+      ETSY_SHOP_ID: "12345"
+      NEXT_PUBLIC_SUPABASE_URL: https://test.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: test-service-key
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: cd backend && npm ci
+
+      - name: Typecheck frontend
+        run: npm run typecheck
+
+      - name: Typecheck backend
+        run: npm run typecheck:backend
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build backend
+        run: cd backend && npm run build

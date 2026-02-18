@@ -12,6 +12,9 @@ const UpdateProductSchema = z
     description: z.string().min(1).optional(),
     tags: z.array(z.string()).optional(),
     price_cents: z.number().int().positive().optional(),
+    etsy_listing_id: z.number().optional(),
+    etsy_url: z.string().optional(),
+    taxonomy_id: z.number().optional(),
     status: z
       .enum([
         "researched",

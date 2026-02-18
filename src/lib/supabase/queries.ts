@@ -8,6 +8,7 @@ import type {
   ProductStatus,
   DashboardSummary,
   Lesson,
+  EtsyToken,
 } from "@/types";
 
 const db = () => getSupabaseAdmin();
@@ -114,6 +115,36 @@ export async function getSales(filters?: { product_id?: string; from?: string; t
   return data;
 }
 
+export async function getProductByListingId(listingId: number): Promise<Product | null> {
+  const { data, error } = await db()
+    .from("products")
+    .select("*")
+    .eq("etsy_listing_id", listingId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function saleExists(etsyReceiptId: string): Promise<boolean> {
+  const { count, error } = await db()
+    .from("sales")
+    .select("id", { count: "exact", head: true })
+    .eq("etsy_receipt_id", etsyReceiptId);
+  if (error) throw error;
+  return (count ?? 0) > 0;
+}
+
+export async function getLatestSaleTimestamp(): Promise<string | null> {
+  const { data, error } = await db()
+    .from("sales")
+    .select("sale_timestamp")
+    .order("sale_timestamp", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.sale_timestamp ?? null;
+}
+
 // --- Pipeline Runs ---
 
 export async function insertPipelineRun(run: Omit<PipelineRun, "id">): Promise<PipelineRun> {
@@ -144,6 +175,18 @@ export async function getLatestPipelineRuns(): Promise<PipelineRun[]> {
 export async function deletePipelineRun(id: string): Promise<void> {
   const { error } = await db().from("pipeline_runs").delete().eq("id", id);
   if (error) throw error;
+}
+
+export async function markStaleRunsFailed(): Promise<number> {
+  const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { data, error } = await db()
+    .from("pipeline_runs")
+    .update({ status: "failed", completed_at: new Date().toISOString() })
+    .eq("status", "running")
+    .lt("started_at", thirtyMinAgo)
+    .select("id");
+  if (error) throw error;
+  return data?.length ?? 0;
 }
 
 // --- Lessons ---
@@ -189,6 +232,61 @@ export async function updateLesson(id: string, updates: Partial<Pick<Lesson, "st
 export async function deleteLesson(id: string): Promise<void> {
   const { error } = await db().from("system_lessons").delete().eq("id", id);
   if (error) throw error;
+}
+
+// --- Pipeline Errors ---
+
+export function logPipelineError(
+  error: unknown,
+  context?: Record<string, unknown>,
+  phase?: string,
+): void {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  Promise.resolve(
+    db()
+      .from("pipeline_errors")
+      .insert({ phase: phase ?? null, error: errorMessage, context: context ?? {} }),
+  )
+    .then(({ error: dbError }) => {
+      if (dbError) console.error("[logPipelineError] Failed to log:", dbError.message);
+    })
+    .catch(() => {
+      // Fire-and-forget — never throw
+    });
+}
+
+// --- Etsy Tokens ---
+
+export async function getEtsyTokens(): Promise<EtsyToken | null> {
+  const { data, error } = await db()
+    .from("etsy_tokens")
+    .select("*")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function upsertEtsyTokens(token: {
+  access_token: string;
+  refresh_token: string;
+  expires_at: string;
+  scopes: string;
+}): Promise<EtsyToken> {
+  // Delete existing tokens and insert new one
+  await db().from("etsy_tokens").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+
+  const { data, error } = await db()
+    .from("etsy_tokens")
+    .insert({
+      ...token,
+      updated_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 // --- Dashboard Summary ---

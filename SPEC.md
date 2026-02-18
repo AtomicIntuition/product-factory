@@ -1,26 +1,26 @@
-# SPEC.md — Gumroad Product Factory
+# SPEC.md — Etsy Spreadsheet Template Factory
 
 ## Overview
-An automated pipeline that researches Gumroad market opportunities, generates high-quality digital products (starting with prompt packs), and publishes them via the Gumroad API. Includes a full dashboard for managing the pipeline, reviewing products, and tracking sales analytics.
+An automated pipeline that researches Etsy market opportunities, generates high-quality spreadsheet templates (.xlsx), creates optimized listing copy and images, and publishes them to Etsy via the Open API v3. Includes a full dashboard for managing the pipeline, reviewing products, and tracking sales analytics.
 
-## Decisions from Interview
+## Decisions
 
 | Decision | Choice |
 |---|---|
-| Starting product type | Prompt packs (expand later) |
+| Product type | Spreadsheet templates (.xlsx) |
 | Target niche | No bias — let research phase find the best gaps |
-| Pricing strategy | Dynamic per product, set by analyzer based on competitor data |
-| Automation level | Manual review now, auto-publish later |
+| Pricing strategy | Dynamic per product ($10-40), set by analyzer based on competitor data |
+| Automation level | Fully automated end-to-end (research → publish) |
 | Throughput target | 1-2 products/day |
 | Pipeline scheduling | Manual trigger from dashboard |
-| Research approach | Hybrid: Claude web search + manual seed data + scraping if feasible |
-| QA strategy | Self-evaluation (Claude rates its own output against criteria) |
+| Research approach | Hybrid: Etsy search API for real data + Claude for deep analysis |
+| QA strategy | Self-evaluation (Claude rates output against 5 spreadsheet dimensions) |
 | Quality failure handling | Auto-retry up to 3x with tweaked prompts, then flag for manual review |
-| AI models | Opus 4.6 for research/analysis, Sonnet 4.5 for generation |
-| Database | Supabase (new project to create) |
-| Deployment | Vercel |
-| Analytics | Include in v1 with Gumroad webhooks |
-| Dashboard | Full UI with charts, filtering, product editing |
+| AI models | Opus 4.6 for all pipeline phases |
+| Database | Supabase (PostgreSQL) |
+| Deployment | Vercel (frontend) + Railway (backend) |
+| Analytics | Etsy receipts API for sales tracking |
+| Dashboard | Full UI with charts, filtering, product editing, Etsy OAuth management |
 
 ---
 
@@ -29,89 +29,97 @@ An automated pipeline that researches Gumroad market opportunities, generates hi
 ### Pipeline Phases
 
 ```
-[RESEARCH] → [ANALYZE] → [GENERATE] → [QA] → [REVIEW] → [PUBLISH]
+[RESEARCH] → [ANALYZE] → [GENERATE] → [QA] → [PUBLISH]
 ```
 
-Each phase is a discrete step triggered manually from the dashboard. Products flow through statuses:
+Products flow through statuses:
 
 ```
-researched → analyzed → generating → qa_pass / qa_fail → ready_for_review → approved → publishing → published / publish_failed
+researched → analyzed → generating → qa_pending → qa_pass / qa_fail → ready_for_review → approved → publishing → published / publish_failed
 ```
 
-Failed states: `qa_fail` (after 3 retries), `publish_failed` (Gumroad API error). Both are recoverable from the dashboard.
+Failed states: `qa_fail` (after 3 retries), `publish_failed` (Etsy API error). Both are recoverable from the dashboard.
 
 ### Phase 1: RESEARCH
-- **Trigger:** Manual from dashboard ("Run Research" button)
-- **Input:** Optional niche filter, or no filter (broad scan)
+- **Trigger:** Manual from dashboard ("Run Research" button) or keyword-seeded
+- **Input:** Optional keyword seeds, or no filter (broad scan with default queries)
 - **Process:**
-  1. Use Claude web search to scan Gumroad discover/trending pages
-  2. Incorporate any manual seed URLs the user has added
-  3. Scrape product data if Gumroad allows (check robots.txt, fall back to search-only)
-  4. Collect: product titles, descriptions, pricing, ratings, review counts, seller info, category
-- **Output:** Raw research data saved to `research_raw` table
+  1. Call Etsy search API with 10 query variations ("spreadsheet template", "excel template", "budget tracker spreadsheet", etc.)
+  2. Collect 30-40 real listings with structured data (price, favorites, views, tags, reviews)
+  3. Pass to Claude Opus for deep analysis of market patterns, pricing, tag strategies, quality gaps
+- **Output:** Raw research data saved to `research_raw` table, real `EtsyListingData` preserved
 - **Model:** Opus 4.6
 
 ### Phase 2: ANALYZE
 - **Trigger:** Auto-runs after research completes
-- **Input:** Raw research data
+- **Input:** Raw research data with real Etsy listings
 - **Process:**
-  1. Claude analyzes market data to identify gaps and opportunities
+  1. Claude analyzes market data to identify gaps for spreadsheet templates
   2. Scores each opportunity: demand (1-10), competition (1-10 inverse), gap size (1-10), feasibility (1-10)
-  3. Composite score = weighted average (demand 30%, gap 30%, feasibility 25%, competition 15%)
-  4. Recommends top 5 opportunities with rationale
+  3. Feasibility considers: ExcelJS capabilities, formula complexity, Google Sheets compatibility
+  4. Composite score = weighted average (demand 30%, gap 30%, feasibility 25%, competition 15%)
+  5. Recommends top 5 opportunities with rationale including 13 Etsy tags
 - **Output:** Research report saved to `research_reports` table with scored opportunities
-- **Model:** Opus 4.6
+- **Constraints:** All opportunities must be `product_type: "spreadsheet_template"`, price range $10-40
 
 ### Phase 3: GENERATE
 - **Trigger:** Manual from dashboard ("Generate Product" on a specific opportunity)
 - **Input:** A scored opportunity from analysis
-- **Process:**
-  1. Determine product format (for prompt packs: number of prompts, categories, structure)
-  2. Generate the actual product content — the prompt pack itself
-  3. Generate listing copy: SEO title, benefit-driven description, tags (max 5)
-  4. Set price based on competitor analysis from research data
-  5. Generate thumbnail description for image generation
+- **Process (multi-call architecture):**
+  1. **Blueprint call** (Opus, thinking enabled): Designs full spreadsheet structure
+     - Title (keyword-first, under 140 chars for Etsy)
+     - Description (full Etsy listing copy with What You Get, Who It's For, How to Use, AI disclosure)
+     - 13 Etsy tags (long-tail, no plurals, no title repeats)
+     - Price ($10-40 based on competitor analysis)
+     - Taxonomy ID (Etsy category)
+     - Thumbnail prompt + 4 preview image prompts
+     - 3-7 sheet plans with column layouts and formula plans
+     - Professional color scheme
+  2. **Parallel sheet calls** (Opus, one per sheet): Complete SheetSpec with columns, rows (data + formulas), merged cells, frozen panes, protected ranges, conditional formatting
+  3. **Assembly**: Combine into GeneratedProduct with SpreadsheetSpec content
 - **Output:** Product record in `products` table with status `generating` → `qa_pending`
-- **Model:** Sonnet 4.5 for content generation
+- **Constraints:**
+  - First sheet MUST be "Instructions"
+  - Google Sheets compatible: NO data validation dropdowns, NO macros, NO VBA, NO pivot tables
+  - Standard formulas only: SUM, AVERAGE, IF, SUMIF, SUMIFS, VLOOKUP, COUNTIF, MAX, MIN, TODAY, TEXT, CONCATENATE
+  - 5-10 rows of realistic sample data
+  - Formula cells marked as protected ranges
 
 ### Phase 4: QA (Self-Evaluation)
 - **Trigger:** Auto-runs after generation completes
-- **Input:** Generated product content
+- **Input:** SpreadsheetSpec JSON (evaluated at specification level)
 - **Process:**
-  1. Claude evaluates the product against quality criteria:
-     - Content length (minimum thresholds per product type)
-     - Uniqueness (no duplicate/near-duplicate prompts within the pack)
-     - Relevance (prompts match the stated niche/category)
-     - Quality (prompts are specific, actionable, not generic)
-     - Listing copy (title is compelling, description sells benefits)
-  2. Assigns pass/fail with detailed feedback
+  1. Claude evaluates the spreadsheet spec against 5 dimensions:
+     - `structure_quality` (1-10) — sheet organization, column layout, logical data flow
+     - `formula_correctness` (1-10) — formulas valid, no circular refs, correct references
+     - `visual_design` (1-10) — professional formatting, consistent colors, readability
+     - `usability` (1-10) — intuitive for non-technical users, clear labels, instructions sheet
+     - `listing_copy` (1-10) — Etsy SEO title, 13 effective tags, value-selling description
+  2. Pass criteria: all scores >= 6, average >= 7
   3. On fail: auto-retry generation with feedback incorporated (up to 3 attempts)
   4. After 3 failures: mark as `qa_fail` for manual intervention
+  5. Lessons extracted from QA feedback for future generation improvement
 - **Output:** Product status updated to `qa_pass` or `qa_fail`
-- **Model:** Opus 4.6 (different model than generator for better evaluation)
 
-### Phase 5: REVIEW
-- **Trigger:** Manual — user reviews from dashboard
-- **Input:** Product with status `ready_for_review`
+### Phase 5: POST-GENERATE
+- **Trigger:** Auto-runs after QA pass
 - **Process:**
-  1. Dashboard shows full product preview: content, listing copy, pricing, thumbnail description
-  2. User can: approve, edit inline, reject, or send back for regeneration
-  3. On approve: status → `approved`
-- **Output:** Product status updated
+  1. Build .xlsx spreadsheet from SpreadsheetSpec JSON using ExcelJS builder
+  2. Validate .xlsx by re-reading with ExcelJS (detect corruption)
+  3. Generate 5 listing images via gpt-image-1 (1024x1024), upscale each to 2000x2000 via sharp
+  4. Upload .xlsx and all images to Supabase Storage
+- **Output:** Product has content_file_url (.xlsx) and image_urls (5 images)
 
 ### Phase 6: PUBLISH
-- **Trigger:** Manual from dashboard ("Publish" button on approved product)
-- **Input:** Approved product
-- **Process:**
-  1. Validate all required fields present
-  2. Create product via Gumroad API (`POST /products`)
-  3. Upload product file (PDF/ZIP of prompt pack)
-  4. Set price, tags, categorization
-  5. Activate product (set `published: true`)
-  6. Store Gumroad product ID and URL
-  7. On failure: status → `publish_failed` with error details, retryable from dashboard
-- **Output:** Product live on Gumroad, status → `published`
-- **Rate limits:** Respect Gumroad API limits with exponential backoff (base 1s, max 60s)
+- **Trigger:** Manual from dashboard ("Publish to Etsy" button) or automated
+- **Input:** Product with content file and images
+- **Process (fully automated, 4 steps):**
+  1. Create draft listing via Etsy API (title, description, price, quantity=999, taxonomy_id, 13 tags, is_digital=true)
+  2. Upload all 5 listing images via multipart upload
+  3. Upload .xlsx digital file via multipart upload
+  4. Activate listing (set state: "active")
+- **Output:** Product live on Etsy with `etsy_listing_id` and `etsy_url`
+- **On failure:** Status → `publish_failed` with specific error (which step failed), retryable
 
 ---
 
@@ -122,9 +130,9 @@ Failed states: `qa_fail` (after 3 retries), `publish_failed` (Gumroad API error)
 |---|---|---|
 | id | uuid | PK |
 | run_id | uuid | Groups data from a single research run |
-| source | text | 'web_search', 'scrape', 'manual_seed' |
-| category | text | Gumroad category |
-| product_data | jsonb | Raw product info (title, price, ratings, etc.) |
+| source | text | 'etsy_api', 'keyword_seed' |
+| category | text | Etsy category / search query |
+| product_data | jsonb | Raw EtsyListingData (title, price, favorites, views, tags, etc.) |
 | created_at | timestamptz | |
 
 ### `research_reports`
@@ -143,19 +151,22 @@ Failed states: `qa_fail` (after 3 retries), `publish_failed` (Gumroad API error)
 | id | uuid | PK |
 | opportunity_id | uuid | Which opportunity this fulfills |
 | report_id | uuid | FK → research_reports.id |
-| product_type | text | 'prompt_pack', 'template', etc. |
-| title | text | SEO-optimized title |
-| description | text | Listing description |
-| content | jsonb | The actual product content |
-| content_file_url | text | URL to generated file (Supabase Storage) |
-| tags | text[] | Up to 5 tags |
-| price_cents | integer | Price in cents |
+| product_type | text | 'spreadsheet_template' |
+| title | text | Etsy SEO-optimized title (keywords first, under 140 chars) |
+| description | text | Full Etsy listing description |
+| content | jsonb | SpreadsheetSpec JSON |
+| content_file_url | text | URL to .xlsx file (Supabase Storage) |
+| tags | text[] | Exactly 13 Etsy tags |
+| price_cents | integer | Price in cents ($10-40 range) |
 | currency | text | Default 'usd' |
-| thumbnail_prompt | text | Description for image generation |
-| qa_score | jsonb | QA evaluation results |
+| thumbnail_prompt | text | Main cover image prompt |
+| thumbnail_url | text | First image URL (backward compat) |
+| image_urls | text[] | All 5 listing image URLs |
+| qa_score | jsonb | QA evaluation results (5 dimensions) |
 | qa_attempts | integer | Number of generation attempts |
-| gumroad_id | text | Gumroad product ID after publishing |
-| gumroad_url | text | Gumroad product URL after publishing |
+| taxonomy_id | integer | Etsy category ID |
+| etsy_listing_id | bigint | Etsy listing ID after publishing |
+| etsy_url | text | Etsy listing URL after publishing |
 | status | text | See status flow above |
 | created_at | timestamptz | |
 | updated_at | timestamptz | |
@@ -165,7 +176,7 @@ Failed states: `qa_fail` (after 3 retries), `publish_failed` (Gumroad API error)
 |---|---|---|
 | id | uuid | PK |
 | product_id | uuid | FK → products.id |
-| gumroad_sale_id | text | Gumroad's sale ID |
+| etsy_receipt_id | text | Etsy receipt ID |
 | amount_cents | integer | Sale amount |
 | currency | text | |
 | buyer_email | text | Hashed or anonymized |
@@ -178,9 +189,31 @@ Failed states: `qa_fail` (after 3 retries), `publish_failed` (Gumroad API error)
 | id | uuid | PK |
 | phase | text | 'research', 'analyze', 'generate', 'qa', 'publish' |
 | status | text | 'running', 'completed', 'failed' |
-| metadata | jsonb | Phase-specific details, error info |
+| metadata | jsonb | Phase-specific details, error info, progress |
 | started_at | timestamptz | |
 | completed_at | timestamptz | |
+
+### `etsy_tokens`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| access_token | text | OAuth access token |
+| refresh_token | text | OAuth refresh token |
+| expires_at | timestamptz | Token expiry time |
+| scopes | text | Granted OAuth scopes |
+| created_at | timestamptz | |
+| updated_at | timestamptz | |
+
+### `lessons`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| lesson | text | The lesson text |
+| dimension | text | QA dimension (structure_quality, formula_correctness, etc.) |
+| severity | integer | 1-5 |
+| source_feedback | text | Original QA feedback |
+| status | text | 'active', 'archived' |
+| created_at | timestamptz | |
 
 ---
 
@@ -190,135 +223,133 @@ Failed states: `qa_fail` (after 3 retries), `publish_failed` (Gumroad API error)
 - Pipeline status: last run time per phase, current state
 - Quick actions: "Run Research", "View Opportunities", "Review Products"
 - Summary stats: total products, published count, total revenue, products in queue
-- Recent activity feed
+- Recent pipeline activity with live progress
 
 ### `/dashboard/research` — Research & Analysis
+- Keyword seed input for targeted research
 - List of research runs with date, source, opportunity count
 - Drill into any run to see scored opportunities
-- Button to trigger new research run (with optional niche filter)
-- Manual seed URL input
+- Generate product from any opportunity
 
 ### `/dashboard/products` — Product Management
-- Filterable table: status, product type, date, price
-- Product detail view with full content preview
-- Inline editing of title, description, price, tags
-- Action buttons per status: Generate, Approve, Reject, Publish, Retry
+- Filterable table: status, product type, date, price, tag count (X/13)
+- Product detail view with spreadsheet preview (sheet structure, columns, formula counts)
+- Image grid showing all 5 listing images
+- Download .xlsx button
+- Publish to Etsy button with progress tracking
+- QA scores with 5 dimension breakdown
 
 ### `/dashboard/analytics` — Sales & Performance
 - Revenue chart (daily/weekly/monthly)
 - Sales per product
-- Top performing products
-- Conversion data if available from Gumroad
+- Top performing products with gross and estimated net revenue
+- Etsy fee breakdown (~15%: $0.20 listing + 6.5% transaction + 3% + $0.25 processing)
+
+### `/dashboard/lessons` — QA Lessons
+- Lessons extracted from QA evaluations
+- Filter by status (active/archived)
+- Dimension badges with color coding
+- Severity levels 1-5
+- Injected into generator before each run
+
+### `/dashboard/settings` — Etsy Connection
+- Connect Etsy Shop via OAuth (PKCE flow)
+- Connection status indicator
+- Token expiry info with reconnect button
+- API configuration help
 
 ---
 
 ## API Routes
 
 ### Pipeline
-- `POST /api/pipeline/research` — Trigger research phase
-- `POST /api/pipeline/generate` — Trigger generation for a specific opportunity
-- `POST /api/pipeline/publish` — Publish approved product to Gumroad
-- `GET /api/pipeline/status` — Current pipeline state
+- `POST /api/pipeline` — Proxy to Railway backend (research, generate, publish actions)
+- `GET /api/pipeline` — List pipeline runs
+- `DELETE /api/pipeline?id=` — Delete a pipeline run
 
 ### Products
 - `GET /api/products` — List products with filtering
 - `GET /api/products/[id]` — Product detail
-- `PATCH /api/products/[id]` — Update product (edit, approve, reject)
+- `PATCH /api/products/[id]` — Update product (edit, approve, update Etsy fields)
 - `DELETE /api/products/[id]` — Delete product
 
 ### Research
 - `GET /api/research/reports` — List research reports
 - `GET /api/research/reports/[id]` — Report detail
-- `POST /api/research/seeds` — Add manual seed URLs
 
 ### Analytics
 - `GET /api/analytics/sales` — Sales data with date range
 - `GET /api/analytics/summary` — Dashboard summary stats
 
-### Webhooks
-- `POST /api/webhooks/gumroad` — Gumroad sale/refund webhook handler
+### Etsy OAuth
+- `GET /api/etsy/auth/start` — Initiate PKCE OAuth flow
+- `GET /api/etsy/auth/callback` — Handle OAuth callback
+- `GET /api/etsy/auth/status` — Check connection status
+
+### Lessons
+- `GET /api/lessons` — List lessons
+- `PATCH /api/lessons` — Update lesson status
+- `DELETE /api/lessons?id=` — Delete a lesson
 
 ---
 
 ## Tech Details
 
-### Gumroad API Integration
-- Auth: API token in `Authorization` header
-- Product creation: `POST https://api.gumroad.com/v2/products`
-- File upload: multipart form data
-- Rate limiting: implement queue with exponential backoff (1s base, 60s max, 5 retries)
-- Webhook verification: validate `seller_id` matches our account
+### Etsy API Integration
+- **Auth:** PKCE OAuth 2.0 (access token + `x-api-key` header)
+- **Public endpoints:** Search listings, get taxonomy nodes (API key only)
+- **OAuth endpoints:** Create/update listings, upload images/files, get receipts
+- **Token management:** Stored in `etsy_tokens` table, auto-refresh when within 5 min of expiry
+- **Rate limiting:** Exponential backoff with jitter (1s base, 60s max, 5 retries)
+- **Publishing:** 4-step automated flow (create draft → upload images → upload file → activate)
 
 ### Claude API Integration
-- Research/Analysis: Opus 4.6 — needs reasoning capability for market analysis
-- Generation: Sonnet 4.5 — fast, good quality for content creation
-- QA Evaluation: Opus 4.6 — different model than generator to avoid self-bias
+- All phases use Opus 4.6
+- Blueprint call uses extended thinking for better reasoning
+- Sheet generation calls run in parallel (one per sheet)
 - All calls use structured output (JSON mode) with Zod validation on response
 
-### Product File Generation
-- Prompt packs: Generate as structured JSON → convert to formatted PDF
-- Use a library like `jspdf` or `@react-pdf/renderer` for PDF generation
-- Store generated files in Supabase Storage
-- Upload to Gumroad from storage URL during publish
+### Spreadsheet Generation
+- Claude generates SpreadsheetSpec JSON (sheet definitions, columns, rows, formulas, styles)
+- ExcelJS builder translates spec to .xlsx deterministically
+- Formulas use `{row}` placeholder, replaced with actual row numbers during build
+- Sheet protection: formula cells locked, data cells unlocked
+- Validation: built .xlsx is re-read by ExcelJS to detect corruption
+- Google Sheets compatible: no dropdowns, no macros, standard formulas only
+
+### Image Generation
+- 5 images per product: cover, laptop mockup, feature callouts, sheet overview, compatibility graphic
+- gpt-image-1 at 1024x1024, upscaled to 2000x2000 via sharp (lanczos3)
+- All 5 generated in parallel via Promise.all
+
+### Etsy Fee Structure (~15% total)
+- $0.20 listing fee per item
+- 6.5% transaction fee
+- 3% + $0.25 payment processing fee
 
 ### Environment Variables
 ```
 ANTHROPIC_API_KEY=
-GUMROAD_API_TOKEN=
-GUMROAD_SELLER_ID=
+OPENAI_API_KEY=
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-GUMROAD_WEBHOOK_SECRET=
+ETSY_API_KEY=
+ETSY_SHARED_SECRET=
+ETSY_SHOP_ID=
+ETSY_ACCESS_TOKEN=     # optional, populated via OAuth
+ETSY_REFRESH_TOKEN=    # optional, populated via OAuth
+BACKEND_URL=
+BACKEND_SECRET=
+FRONTEND_URL=
 ```
 
 ---
 
-## Build Order
-
-### Phase 1: Foundation
-1. Initialize Next.js 14 project with TypeScript, Tailwind, App Router
-2. Set up Supabase project and run migrations for all tables
-3. Set up environment variables with Zod validation
-4. Create Supabase client library (`lib/supabase/`)
-5. Create Gumroad API client with rate limiting (`lib/gumroad/`)
-6. Create Claude API wrapper (`lib/ai/`)
-
-### Phase 2: Pipeline Core
-7. Build research agent (`lib/ai/researcher.ts`)
-8. Build analysis agent (`lib/ai/analyzer.ts`)
-9. Build generation agent (`lib/ai/generator.ts`) — prompt packs only
-10. Build QA evaluator (`lib/ai/evaluator.ts`)
-11. Build copywriter agent (`lib/ai/copywriter.ts`)
-12. Build pipeline orchestrator (`lib/pipeline/`)
-13. Build all API routes
-
-### Phase 3: Dashboard
-14. Layout shell with navigation
-15. Main dashboard page with stats and quick actions
-16. Research page with run history and opportunity viewer
-17. Products page with filterable table and detail/edit views
-18. Publish flow (approval → Gumroad publish)
-19. Analytics page with charts
-
-### Phase 4: Webhooks & Analytics
-20. Gumroad webhook handler for sales
-21. Sales data ingestion and storage
-22. Analytics API routes
-23. Analytics dashboard charts
-
-### Phase 5: Polish
-24. Error handling and retry UI
-25. Loading states and optimistic updates
-26. PDF generation for prompt packs
-27. End-to-end testing of full pipeline flow
-
----
-
 ## Out of Scope for v1
-- Multiple product types (templates, guides, etc.) — expand after prompt packs work
+- Multiple product types (guides, planners, etc.) — expand after spreadsheet templates work
 - Auto-scheduling / cron jobs — manual trigger only for now
-- Auto-publish without review
-- Thumbnail image generation (description only for now)
-- Multi-marketplace support (Gumroad only)
+- Multi-marketplace support (Etsy only)
 - User authentication on the dashboard (single-user, local/deployed)
+- Data validation dropdowns (Google Sheets incompatible)
+- Macros or VBA (not supported in Google Sheets or Etsy digital downloads)

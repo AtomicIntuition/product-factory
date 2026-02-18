@@ -1,45 +1,45 @@
 import { promptClaude } from "@/lib/ai/client";
 import { getActiveLessons } from "@/lib/supabase/queries";
-import type { Opportunity, Lesson } from "@/types";
-
-interface GeneratedProductSection {
-  title: string;
-  prompts: string[];
-}
-
-interface GeneratedProductContent {
-  format: string;
-  sections: GeneratedProductSection[];
-  total_prompts: number;
-}
+import type { Opportunity, Lesson, SpreadsheetSpec, SheetSpec } from "@/types";
 
 export interface GeneratedProduct {
   product_type: string;
   title: string;
   description: string;
-  content: GeneratedProductContent;
+  content: SpreadsheetSpec;
   tags: string[];
   price_cents: number;
   currency: string;
   thumbnail_prompt: string;
+  preview_prompts: string[];
+  taxonomy_id: number;
 }
 
-// Phase 1 output: product metadata + section plan
+// Phase 1 output: product metadata + sheet plan
 interface ProductBlueprint {
   product_type: string;
   title: string;
   description: string;
-  section_titles: string[];
   tags: string[];
   price_cents: number;
   currency: string;
+  taxonomy_id: number;
   thumbnail_prompt: string;
-}
-
-// Phase 2 output: a single section's prompts
-interface SectionOutput {
-  title: string;
-  prompts: string[];
+  preview_prompts: string[];
+  sheets: {
+    name: string;
+    purpose: string;
+    column_plan: string;
+    formula_plan: string;
+  }[];
+  color_scheme: {
+    primary: string;
+    secondary: string;
+    accent: string;
+    header_bg: string;
+    header_text: string;
+    alt_row_bg: string;
+  };
 }
 
 function formatLessonsBlock(lessons: Lesson[]): string {
@@ -61,54 +61,71 @@ async function generateBlueprint(params: {
     ? `\n\nIMPORTANT — PREVIOUS ATTEMPT FEEDBACK (attempt ${params.attempt - 1}):\n${params.previousFeedback}\n\nAddress every issue mentioned above.`
     : "";
 
-  const system = `You are an expert digital product creator and copywriter specializing in high-converting prompt packs for Gumroad.
+  const system = `You are an expert spreadsheet template designer and Etsy listing copywriter. You create professional Excel/Google Sheets templates that sell on Etsy.
 
-Create a product BLUEPRINT — the metadata and structure only. The actual prompts will be generated separately for each section, so do NOT write any prompts here.
+Create a product BLUEPRINT — the metadata, listing copy, and sheet structure plan. The actual sheet data will be generated separately.
 
 Requirements:
 
-1. TITLE: SEO-optimized for Gumroad search. Include the key search terms buyers would use. Under 80 characters. Use power words and make it clear what the buyer gets.
-   - CRITICAL: The title MUST say "30" prompts because the pack contains exactly 30 prompts (5 sections × 6 prompts). NEVER claim a higher number like 50, 100, 200, 500, or 600+. That is false advertising.
-   - Good example: "30 Expert AI Prompts for Shopify & DTC Ecommerce"
-   - Bad example: "600+ ChatGPT Prompts for Shopify" (WRONG — we only have 30)
+1. TITLE: Etsy SEO-optimized, keywords FIRST, under 140 characters. Include terms buyers search for.
+   - Good: "Monthly Budget Tracker Spreadsheet Template Excel Google Sheets Financial Planner"
+   - Bad: "Beautiful Budget Tracker" (keywords not first)
 
-2. DESCRIPTION: This is the most important part — it's your sales page. Write a full, high-converting Gumroad listing description using markdown. Study what top-selling Gumroad products do:
-   - Start with a bold hook or pain point that grabs attention
-   - Use emojis strategically as visual anchors (🎯 ✨ 💡 🚀 ⚡ etc.)
-   - Break content into scannable sections with bold headers
-   - List exactly what's included with a "What You Get" section naming all 5 sections
-   - Include a "Who This Is For" section targeting the ideal buyer
-   - Add a "Why This Pack?" section with 3-4 compelling differentiators
-   - Use bullet points extensively — walls of text don't sell
-   - End with a clear call-to-action
-   - Be specific about the value (e.g. "Save 10+ hours per week" not "save time")
-   - 300-500 words is the sweet spot for Gumroad descriptions
-   - CRITICAL: Do NOT inflate numbers. The product contains EXACTLY 30 prompts (5 sections × 6 prompts). Never claim more. Say "30" in both the title and description. False advertising destroys trust and triggers refunds.
+2. DESCRIPTION: Full Etsy listing description. Must include:
+   - What You Get section (list all tabs/sheets and what each does)
+   - Who It's For section (target buyer personas)
+   - How to Use section (quick start guide)
+   - Features section (formulas, auto-calculations, etc.)
+   - Software requirements: "Works with Microsoft Excel (2016+) and Google Sheets"
+   - AI DISCLOSURE (required): "Designed with AI assistance. Template structure and formulas created using AI tools."
+   - 300-600 words, scannable with bullet points
 
-3. SECTION TITLES: Exactly 5 themed section titles that comprehensively cover the niche. Each section will contain 6 detailed prompts (30 total). Make section titles compelling and specific.
+3. TAGS: Exactly 13 long-tail Etsy tags. No plurals of title words. Each tag max 20 chars.
 
-4. TAGS: 5-8 relevant tags for Gumroad discoverability.
+4. PRICE: In cents. $10-40 range based on complexity. Multi-tab solutions: $15-40. Simple trackers: $10-15.
 
-5. PRICE: In cents. Competitive based on opportunity data. Typically $7-12 for 30 expert prompts.
+5. TAXONOMY_ID: Etsy category ID (2078 for Templates, or find more specific)
 
-6. THUMBNAIL PROMPT: A prompt for generating a square (1:1) product cover image. Bold text overlay with the product title, clean modern background, vibrant colors. Gumroad product card style, NOT a photo.${params.lessonsBlock}${params.marketIntelligence ? `\n\nMARKET INTELLIGENCE FROM RESEARCH:\n${params.marketIntelligence}\n\nUse the market analysis and top seller patterns above to craft a listing that competes with or exceeds the best-performing products in this space. Apply their winning strategies to your title, description, pricing, and section structure.` : ""}
+6. SHEETS: Plan 3-7 sheets. FIRST sheet MUST be "Instructions".
+   - Each sheet needs: name, purpose, column plan (what columns), formula plan (what calculations)
+   - Design for Google Sheets compatibility: NO data validation dropdowns, NO macros, NO VBA, NO pivot tables
+   - Use standard formulas ONLY: SUM, AVERAGE, IF, SUMIF, SUMIFS, VLOOKUP, COUNTIF, MAX, MIN, TODAY, TEXT, CONCATENATE
+   - Include 5-10 rows of realistic sample data per data sheet
+   - Protect formula cells from accidental editing
+   - Use alternating row colors for readability
+
+7. COLOR_SCHEME: Professional hex colors. Not garish.
+
+8. IMAGE PROMPTS: 5 total (1 main cover + 4 previews):
+   - thumbnail_prompt: Main product cover — bold title text, professional background, "Spreadsheet Template" callout
+   - preview_prompts[0]: Laptop mockup showing the spreadsheet in use
+   - preview_prompts[1]: Feature callouts with checkmarks (automated calculations, multiple tabs, etc.)
+   - preview_prompts[2]: Sheet overview — what each tab contains
+   - preview_prompts[3]: Compatibility graphic — "Works in Excel + Google Sheets"${params.lessonsBlock}${params.marketIntelligence ? `\n\nMARKET INTELLIGENCE FROM RESEARCH:\n${params.marketIntelligence}\n\nUse the market analysis above to craft a listing that competes with the best-performing templates.` : ""}
 
 Return ONLY valid JSON:
 {
-  "product_type": "prompt_pack",
-  "title": "string",
-  "description": "string (full Gumroad listing description with markdown)",
-  "section_titles": ["string", "string", "string", "string", "string"],
-  "tags": ["string"],
+  "product_type": "spreadsheet_template",
+  "title": "string (Etsy SEO title, keywords first, under 140 chars)",
+  "description": "string (full Etsy listing description with markdown)",
+  "tags": ["string", ... exactly 13 tags],
   "price_cents": number,
   "currency": "usd",
-  "thumbnail_prompt": "string"
+  "taxonomy_id": number,
+  "thumbnail_prompt": "string",
+  "preview_prompts": ["string", "string", "string", "string"],
+  "sheets": [
+    {"name": "string", "purpose": "string", "column_plan": "string", "formula_plan": "string"}
+  ],
+  "color_scheme": {
+    "primary": "#hex", "secondary": "#hex", "accent": "#hex",
+    "header_bg": "#hex", "header_text": "#hex", "alt_row_bg": "#hex"
+  }
 }`;
 
-  const prompt = `Create a product blueprint for this opportunity:
+  const prompt = `Create a spreadsheet template blueprint for this opportunity:
 
 Niche: ${params.opportunity.niche}
-Product type: ${params.opportunity.product_type}
 Description: ${params.opportunity.description}
 Rationale: ${params.opportunity.rationale}
 Suggested price: $${(params.opportunity.suggested_price_cents / 100).toFixed(2)}
@@ -120,56 +137,94 @@ This is generation attempt ${params.attempt} of 3.${feedbackContext}`;
     model: "opus",
     system,
     prompt,
-    maxTokens: 4096,
+    maxTokens: 8192,
     thinking: true,
   });
 }
 
-async function generateSection(params: {
-  sectionTitle: string;
-  sectionIndex: number;
-  totalSections: number;
+async function generateSheet(params: {
+  sheetPlan: { name: string; purpose: string; column_plan: string; formula_plan: string };
+  sheetIndex: number;
+  totalSheets: number;
   productTitle: string;
   niche: string;
-  productDescription: string;
-  allSectionTitles: string[];
+  allSheetNames: string[];
+  colorScheme: ProductBlueprint["color_scheme"];
   lessonsBlock: string;
-}): Promise<SectionOutput> {
-  const system = `You are an expert prompt engineer creating a section of a premium AI prompt pack called "${params.productTitle}".
+}): Promise<SheetSpec> {
+  const system = `You are an expert spreadsheet designer creating a specific sheet for a professional template called "${params.productTitle}".
 
-You are writing Section ${params.sectionIndex + 1} of ${params.totalSections}: "${params.sectionTitle}"
+You are designing Sheet ${params.sheetIndex + 1} of ${params.totalSheets}: "${params.sheetPlan.name}"
 
-The full product has these sections:
-${params.allSectionTitles.map((t, i) => `${i + 1}. ${t}${i === params.sectionIndex ? " ← YOU ARE WRITING THIS ONE" : ""}`).join("\n")}
+All sheets in this template:
+${params.allSheetNames.map((n, i) => `${i + 1}. ${n}${i === params.sheetIndex ? " ← YOU ARE DESIGNING THIS ONE" : ""}`).join("\n")}
 
-Requirements:
-- Write exactly 6 high-quality, ready-to-use AI prompts for this section.
-- Each prompt must be specific, actionable, and immediately usable by the buyer.
-- Each prompt should be 2-4 sentences. Include specific parameters, context, tone, and desired output format where relevant.
-- No generic filler. Every prompt must provide unique, expert-level value that justifies the price.
-- Prompts should cover different aspects of the section topic — no overlap.
-- Do NOT include numbering, labels, explanations, or preamble. Just the raw prompt text.
-- Stay focused on your section. Do NOT duplicate content that belongs in other sections.${params.lessonsBlock}
+Sheet purpose: ${params.sheetPlan.purpose}
+Column plan: ${params.sheetPlan.column_plan}
+Formula plan: ${params.sheetPlan.formula_plan}
 
-Return ONLY valid JSON:
+Color scheme:
+- Header background: ${params.colorScheme.header_bg}
+- Header text: ${params.colorScheme.header_text}
+- Alternating row background: ${params.colorScheme.alt_row_bg}
+- Accent: ${params.colorScheme.accent}
+
+DESIGN RULES:
+- Use standard formulas ONLY: SUM, AVERAGE, IF, SUMIF, SUMIFS, VLOOKUP, COUNTIF, MAX, MIN, TODAY, TEXT, CONCATENATE
+- NO data validation dropdowns, NO macros, NO VBA, NO pivot tables (must work in Google Sheets)
+- For row-relative formulas, use {row} as placeholder (e.g., "=B{row}*C{row}" — the builder replaces {row} with actual row numbers)
+- Include 5-10 rows of realistic sample data showing the template in action
+- Header row should be bold with background color
+- Data rows alternate white and alt_row_bg
+- Total/summary rows should be bold with top border
+- Freeze header rows and any label columns
+- Mark formula cells as protected_ranges so users don't accidentally edit them
+- Column widths should be reasonable (8-30 depending on content type)
+- If this is the Instructions sheet: use merged cells for a welcome header, list all tabs with descriptions, include "How to Use" steps${params.lessonsBlock}
+
+Return ONLY valid JSON matching this exact SheetSpec structure:
 {
-  "title": "${params.sectionTitle}",
-  "prompts": ["prompt 1", "prompt 2", "prompt 3", "prompt 4", "prompt 5", "prompt 6"]
+  "name": "string",
+  "purpose": "string",
+  "is_instructions": boolean,
+  "columns": [
+    {"letter": "A", "header": "string", "width": number, "type": "text|number|currency|date|percentage|formula", "number_format": "optional string"}
+  ],
+  "rows": [
+    {
+      "row": number (1-based),
+      "is_header": boolean,
+      "is_total": boolean,
+      "is_sample": boolean,
+      "cells": {
+        "A": {"value": "string or number or null", "formula": "optional string", "style": {"bold": boolean, "font_color": "#hex", "bg_color": "#hex", "h_align": "left|center|right", "border": "thin|medium"}}
+      }
+    }
+  ],
+  "frozen": {"rows": number, "cols": number},
+  "merged_cells": ["A1:D1"],
+  "protected_ranges": ["E2:E50"],
+  "conditional_formats": []
 }`;
 
-  const prompt = `Write 6 expert-level prompts for the "${params.sectionTitle}" section.
+  const prompt = `Design the complete sheet specification for "${params.sheetPlan.name}" in the ${params.niche} spreadsheet template.
 
-Product: ${params.productTitle}
-Niche: ${params.niche}
-Product description: ${params.productDescription}
+Include:
+- Complete column definitions with appropriate widths and types
+- Header row with styled headers
+- 5-10 sample data rows with realistic values
+- Summary/total rows with formulas where appropriate
+- Frozen panes for headers
+- Protected ranges for formula cells
+- Merged cells where useful (e.g., section headers)
 
-Make each prompt specific, detailed, and worth paying for. A buyer should feel this section alone justifies part of the price. These prompts should be things a professional in this niche would actually use daily.`;
+Make this sheet professional, intuitive, and immediately useful to a non-technical buyer.`;
 
-  return promptClaude<SectionOutput>({
+  return promptClaude<SheetSpec>({
     model: "opus",
     system,
     prompt,
-    maxTokens: 4096,
+    maxTokens: 8192,
   });
 }
 
@@ -193,7 +248,7 @@ export async function generateProduct(params: {
   const lessonsBlock = formatLessonsBlock(lessons);
 
   // Phase 1: Generate blueprint (0-20%)
-  console.log(`[generator] Phase 1: Generating product blueprint with Opus...`);
+  console.log(`[generator] Phase 1: Generating spreadsheet blueprint with Opus...`);
   params.onProgress?.(5);
 
   const blueprint = await generateBlueprint({
@@ -204,56 +259,55 @@ export async function generateProduct(params: {
     marketIntelligence: params.marketIntelligence,
   });
 
-  console.log(`[generator] Blueprint: "${blueprint.title}" — sections: ${blueprint.section_titles.join(", ")}`);
+  console.log(`[generator] Blueprint: "${blueprint.title}" — ${blueprint.sheets.length} sheets planned`);
   params.onProgress?.(20);
 
-  // Phase 2: Generate all sections in parallel (20-90%)
-  console.log(`[generator] Phase 2: Generating ${blueprint.section_titles.length} sections in parallel with Opus...`);
+  // Phase 2: Generate all sheets in parallel (20-90%)
+  console.log(`[generator] Phase 2: Generating ${blueprint.sheets.length} sheet specs in parallel with Opus...`);
 
-  let completedSections = 0;
-  const sectionPromises = blueprint.section_titles.map((title, i) =>
-    generateSection({
-      sectionTitle: title,
-      sectionIndex: i,
-      totalSections: blueprint.section_titles.length,
+  let completedSheets = 0;
+  const sheetPromises = blueprint.sheets.map((sheetPlan, i) =>
+    generateSheet({
+      sheetPlan,
+      sheetIndex: i,
+      totalSheets: blueprint.sheets.length,
       productTitle: blueprint.title,
       niche: params.opportunity.niche,
-      productDescription: blueprint.description,
-      allSectionTitles: blueprint.section_titles,
+      allSheetNames: blueprint.sheets.map((s) => s.name),
+      colorScheme: blueprint.color_scheme,
       lessonsBlock,
-    }).then((section) => {
-      completedSections++;
-      const pct = 20 + Math.round((completedSections / blueprint.section_titles.length) * 70);
-      console.log(`[generator] Section ${completedSections}/${blueprint.section_titles.length} done: "${title}" (${section.prompts.length} prompts)`);
+    }).then((sheet) => {
+      completedSheets++;
+      const pct = 20 + Math.round((completedSheets / blueprint.sheets.length) * 70);
+      console.log(`[generator] Sheet ${completedSheets}/${blueprint.sheets.length} done: "${sheet.name}" (${sheet.rows.length} rows)`);
       params.onProgress?.(pct);
-      return section;
+      return sheet;
     }),
   );
 
-  const sections = await Promise.all(sectionPromises);
+  const sheets = await Promise.all(sheetPromises);
 
   // Phase 3: Assemble final product (90-100%)
   console.log(`[generator] Phase 3: Assembling final product...`);
   params.onProgress?.(95);
-
-  const totalPrompts = sections.reduce((sum, s) => sum + s.prompts.length, 0);
 
   const product: GeneratedProduct = {
     product_type: blueprint.product_type,
     title: blueprint.title,
     description: blueprint.description,
     content: {
-      format: "prompt_pack",
-      sections,
-      total_prompts: totalPrompts,
+      sheets,
+      color_scheme: blueprint.color_scheme,
     },
     tags: blueprint.tags,
     price_cents: blueprint.price_cents,
     currency: blueprint.currency,
     thumbnail_prompt: blueprint.thumbnail_prompt,
+    preview_prompts: blueprint.preview_prompts,
+    taxonomy_id: blueprint.taxonomy_id,
   };
 
-  console.log(`[generator] Complete: "${product.title}" — ${totalPrompts} prompts across ${sections.length} sections`);
+  console.log(`[generator] Complete: "${product.title}" — ${sheets.length} sheets`);
   params.onProgress?.(100);
 
   return product;

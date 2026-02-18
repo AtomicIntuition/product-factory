@@ -1,84 +1,119 @@
 import { promptClaude } from "@/lib/ai/client";
-import type { GumroadProductData } from "@/types";
+import { etsy } from "@/lib/etsy/client";
+import type { EtsyListingData } from "@/types";
 
 interface ResearchResult {
-  products: GumroadProductData[];
+  products: EtsyListingData[];
   categories_analyzed: string[];
   raw_analysis: string;
   top_seller_patterns: string;
 }
 
+const SEARCH_QUERIES = [
+  "spreadsheet template",
+  "excel template",
+  "budget tracker spreadsheet",
+  "business planner template",
+  "inventory tracker excel",
+  "financial template google sheets",
+  "expense tracker spreadsheet",
+  "project management spreadsheet",
+  "wedding budget spreadsheet",
+  "small business bookkeeping template",
+];
+
 export async function runResearch(params: {
   niche?: string;
-  seedUrls?: string[];
+  keywords?: string[];
 }): Promise<ResearchResult> {
-  const nicheContext = params.niche
-    ? `Focus specifically on the "${params.niche}" niche.`
-    : "Analyze a broad cross-section of popular niches on Gumroad.";
+  const queries = params.keywords && params.keywords.length > 0
+    ? params.keywords
+    : params.niche
+      ? [params.niche, `${params.niche} spreadsheet`, `${params.niche} template excel`]
+      : SEARCH_QUERIES;
 
-  const seedContext =
-    params.seedUrls && params.seedUrls.length > 0
-      ? `\n\nInclude the following seed URLs in your analysis context as reference points for existing products:\n${params.seedUrls.map((url) => `- ${url}`).join("\n")}`
-      : "";
+  // Collect real Etsy listings from multiple search queries
+  const allListings: EtsyListingData[] = [];
+  const seenIds = new Set<number>();
+  const categoriesAnalyzed: string[] = [];
 
-  const system = `You are an expert market researcher specializing in AI prompt packs on the Gumroad digital products marketplace. Your job is to conduct deep competitive analysis of existing prompt packs — their pricing, positioning, listing quality, sales performance, and what makes the best ones succeed.
+  console.log(`[researcher] Searching Etsy with ${queries.length} queries...`);
 
-IMPORTANT: Focus ONLY on prompt packs (ChatGPT prompts, Midjourney prompts, AI art prompts, business prompts, writing prompts, coding prompts, etc.). Do NOT research templates, courses, guides, software, or other product types. We only sell prompt packs.
+  for (const query of queries) {
+    try {
+      const result = await etsy.searchListings({
+        keywords: query,
+        limit: 10,
+        sort_on: "score",
+      });
+
+      categoriesAnalyzed.push(query);
+
+      for (const listing of result.results) {
+        if (seenIds.has(listing.listing_id)) continue;
+        seenIds.add(listing.listing_id);
+
+        const priceCents = Math.round(
+          (listing.price.amount / listing.price.divisor) * 100,
+        );
+
+        allListings.push({
+          listing_id: listing.listing_id,
+          title: listing.title,
+          description: listing.description.slice(0, 500),
+          price_cents: priceCents,
+          currency: listing.price.currency_code.toLowerCase(),
+          num_favorers: listing.num_favorers,
+          views: listing.views,
+          tags: listing.tags,
+          taxonomy_id: listing.taxonomy_id,
+          url: listing.url,
+          shop_name: `shop_${listing.shop_id}`,
+          review_count: listing.review_count ?? 0,
+          rating: listing.rating ?? null,
+          is_digital: listing.is_digital,
+        });
+      }
+    } catch (err) {
+      console.error(`[researcher] Search query "${query}" failed:`, err);
+    }
+  }
+
+  console.log(`[researcher] Collected ${allListings.length} unique listings from Etsy`);
+
+  // Pass real data to Claude for deep analysis
+  const system = `You are an expert market researcher specializing in digital spreadsheet templates on the Etsy marketplace. You have been given real Etsy listing data. Your job is to conduct deep competitive analysis of existing spreadsheet templates — their pricing, positioning, listing quality, sales performance (estimated from favorites/views), and what makes the best ones succeed.
+
+IMPORTANT: Focus ONLY on spreadsheet templates (Excel, Google Sheets). Analyze budget trackers, business planners, inventory systems, financial templates, project management tools, wedding planners, etc. — all as spreadsheet templates.
 
 You must return ONLY valid JSON with this exact structure:
 {
-  "products": [
-    {
-      "title": "string (exact product title as it appears on Gumroad)",
-      "description": "string (detailed summary of the listing — what it promises, how it's structured, key selling points, description length and format quality)",
-      "price_cents": number,
-      "currency": "usd",
-      "rating": number | null,
-      "review_count": number,
-      "seller_name": "string",
-      "seller_id": "string",
-      "url": "string",
-      "tags": ["string"],
-      "category": "string",
-      "sales_estimate": "string (low/medium/high/very_high — based on review count, visibility, and social proof signals)",
-      "listing_quality": "string (poor/average/good/excellent — rate their title SEO, description persuasiveness, formatting, visual presentation, and overall conversion potential)"
-    }
-  ],
-  "categories_analyzed": ["string"],
-  "raw_analysis": "string (comprehensive market analysis: which niches have highest demand, pricing sweet spots by niche, quality distribution, underserved markets, emerging trends, and where the biggest opportunities lie)",
-  "top_seller_patterns": "string (DETAILED breakdown of what the top 5 best-selling prompt packs do differently. Specifically analyze: 1) Description structure and length 2) Emoji and formatting usage 3) How they frame the value proposition 4) Their hook/opening line 5) How they list what's included 6) Call-to-action strategy 7) Pricing psychology 8) Title SEO patterns 9) How they handle social proof 10) What makes a buyer click 'I want this' vs scrolling past)"
-}
+  "products": <the exact array of products passed to you — return them unchanged>,
+  "categories_analyzed": <the categories array passed to you>,
+  "raw_analysis": "string (comprehensive market analysis: which niches have highest demand, pricing sweet spots, quality distribution, underserved markets, emerging trends, what buyers want in spreadsheet templates, Google Sheets vs Excel preference trends)",
+  "top_seller_patterns": "string (DETAILED breakdown of what the top-performing spreadsheet template listings do differently. Specifically analyze: 1) Title keyword patterns — what words appear first 2) Tag strategies — which 13-tag combinations drive traffic 3) Description structure and what info converts 4) Pricing psychology in $10-40 range 5) How they showcase multiple sheets/tabs 6) Image strategy — what listing photos show 7) How they handle Excel vs Google Sheets compatibility 8) Number of favorites vs price correlation 9) What makes a buyer click 'Add to cart' vs scrolling past 10) Common weaknesses and gaps in existing listings)"
+}`;
 
-SCOPE: Analyze 25-30 prompt pack products across different niches, price points, and popularity levels. Include:
-- 8-10 top performers (high reviews, established sellers)
-- 10-12 mid-tier products (moderate success)
-- 5-8 newer or underperforming products (to understand what NOT to do)
+  const prompt = `Analyze the following ${allListings.length} real Etsy spreadsheet template listings and provide deep market intelligence.
 
-This gives us a complete picture of the competitive landscape from top to bottom.
+Categories searched: ${categoriesAnalyzed.join(", ")}
 
-Ensure price_cents is the price in cents (e.g., $9.99 = 999). For ratings, use a 1-5 scale or null if unknown. Be specific and data-driven in your analysis — vague observations are useless.`;
+Listing data:
+${JSON.stringify(allListings, null, 2)}
 
-  const prompt = `Conduct a deep competitive analysis of AI prompt packs on the Gumroad marketplace.
+Provide comprehensive analysis of the spreadsheet template market on Etsy. Focus on identifying gaps where a new, high-quality spreadsheet template could succeed. What niches are underserved? What quality level is table stakes vs premium? Where are the biggest opportunities?`;
 
-${nicheContext}${seedContext}
-
-For each product, provide detailed market data:
-- Exact title and accurate pricing in cents
-- Estimated ratings and review counts based on market positioning
-- Relevant tags and categorization
-- Seller information and their market presence
-- Sales estimate based on review count and visibility signals
-- Honest listing quality assessment — what works and what doesn't in their listing
-
-For the raw_analysis, go deep: which niches are saturated vs underserved, what price points convert best, what quality level is table stakes vs premium, and where a new entrant could win.
-
-For top_seller_patterns, study the best performers like a copywriter would: break down their exact listing structure, how they use formatting, what psychological triggers they pull, and what specifically makes their listings convert better than the rest. This intelligence directly shapes our product listings.`;
-
-  return promptClaude<ResearchResult>({
+  const result = await promptClaude<ResearchResult>({
     model: "opus",
     system,
     prompt,
     maxTokens: 16384,
     thinking: true,
   });
+
+  // Ensure we use the real listings data regardless of what Claude returns
+  result.products = allListings;
+  result.categories_analyzed = categoriesAnalyzed;
+
+  return result;
 }

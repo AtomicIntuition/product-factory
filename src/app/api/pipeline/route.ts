@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { getLatestPipelineRuns, deletePipelineRun } from "@/lib/supabase/queries";
 
 export async function GET(): Promise<NextResponse> {
@@ -11,14 +12,23 @@ export async function GET(): Promise<NextResponse> {
   }
 }
 
+const DeleteQuerySchema = z.object({
+  id: z.string().uuid(),
+});
+
 export async function DELETE(request: NextRequest): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(request.url);
-    const id = searchParams.get("id");
-    if (!id) {
-      return NextResponse.json({ error: "Missing id parameter" }, { status: 400 });
+    const parsed = DeleteQuerySchema.safeParse({
+      id: searchParams.get("id") ?? undefined,
+    });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid id parameter", details: parsed.error.flatten() },
+        { status: 400 },
+      );
     }
-    await deletePipelineRun(id);
+    await deletePipelineRun(parsed.data.id);
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

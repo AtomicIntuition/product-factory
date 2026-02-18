@@ -1,13 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { getReportById, deleteReport } from "@/lib/supabase/queries";
+
+const ParamsSchema = z.object({
+  id: z.string().uuid(),
+});
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
-) {
+): Promise<NextResponse> {
   try {
-    const { id } = await params;
-    const report = await getReportById(id);
+    const parsed = ParamsSchema.safeParse(await params);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid id parameter", details: parsed.error.flatten() },
+        { status: 400 },
+      );
+    }
+    const report = await getReportById(parsed.data.id);
     return NextResponse.json(report);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -23,8 +34,14 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   try {
-    const { id } = await params;
-    await deleteReport(id);
+    const parsed = ParamsSchema.safeParse(await params);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid id parameter", details: parsed.error.flatten() },
+        { status: 400 },
+      );
+    }
+    await deleteReport(parsed.data.id);
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

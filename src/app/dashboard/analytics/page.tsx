@@ -310,30 +310,70 @@ export default function AnalyticsPage(): React.ReactElement {
                 <tr className="border-b border-gray-800 text-gray-400 text-left">
                   <th className="px-6 py-3 font-medium">Product</th>
                   <th className="px-6 py-3 font-medium">Total Sales</th>
-                  <th className="px-6 py-3 font-medium">Total Revenue</th>
+                  <th className="px-6 py-3 font-medium">Gross Revenue</th>
+                  <th className="px-6 py-3 font-medium">Est. Net Revenue</th>
                   <th className="px-6 py-3 font-medium">Avg. Sale Price</th>
                 </tr>
               </thead>
               <tbody>
-                {productSales.map((ps) => (
-                  <tr
-                    key={ps.product_id}
-                    className="border-b border-gray-800/50 last:border-0"
-                  >
-                    <td className="px-6 py-3 text-gray-100 font-medium">
-                      {ps.product}
-                    </td>
-                    <td className="px-6 py-3 text-gray-300">{ps.sales}</td>
-                    <td className="px-6 py-3 text-gray-300">
-                      {formatCents(ps.revenue)}
-                    </td>
-                    <td className="px-6 py-3 text-gray-300">
-                      {formatCents(Math.round(ps.avgPrice))}
-                    </td>
-                  </tr>
-                ))}
+                {productSales.map((ps) => {
+                  // Etsy fees: $0.20 listing + 6.5% transaction + 3% + $0.25 payment processing
+                  const listingFees = ps.sales * 20; // $0.20 per sale in cents
+                  const transactionFees = Math.round(ps.revenue * 0.065);
+                  const processingFees = Math.round(ps.revenue * 0.03) + ps.sales * 25; // 3% + $0.25
+                  const totalFees = listingFees + transactionFees + processingFees;
+                  const netRevenue = ps.revenue - totalFees;
+                  return (
+                    <tr
+                      key={ps.product_id}
+                      className="border-b border-gray-800/50 last:border-0"
+                    >
+                      <td className="px-6 py-3 text-gray-100 font-medium">
+                        {ps.product}
+                      </td>
+                      <td className="px-6 py-3 text-gray-300">{ps.sales}</td>
+                      <td className="px-6 py-3 text-gray-300">
+                        {formatCents(ps.revenue)}
+                      </td>
+                      <td className="px-6 py-3 text-green-400">
+                        {formatCents(netRevenue)}
+                      </td>
+                      <td className="px-6 py-3 text-gray-300">
+                        {formatCents(Math.round(ps.avgPrice))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+          </div>
+
+          {/* Etsy Fee Breakdown */}
+          <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
+            <h2 className="text-lg font-semibold text-white mb-3">
+              Etsy Fee Breakdown
+            </h2>
+            <p className="text-sm text-gray-400 mb-4">
+              Estimated fees per sale (digital listings):
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+              <div className="bg-gray-800/50 rounded-lg p-3">
+                <p className="text-gray-500 mb-1">Listing Fee</p>
+                <p className="text-gray-200 font-medium">$0.20 / listing</p>
+              </div>
+              <div className="bg-gray-800/50 rounded-lg p-3">
+                <p className="text-gray-500 mb-1">Transaction Fee</p>
+                <p className="text-gray-200 font-medium">6.5% of sale price</p>
+              </div>
+              <div className="bg-gray-800/50 rounded-lg p-3">
+                <p className="text-gray-500 mb-1">Payment Processing</p>
+                <p className="text-gray-200 font-medium">3% + $0.25</p>
+              </div>
+              <div className="bg-gray-800/50 rounded-lg p-3">
+                <p className="text-gray-500 mb-1">Total (approx.)</p>
+                <p className="text-gray-200 font-medium">~15% of sale price</p>
+              </div>
+            </div>
           </div>
         </>
       )}

@@ -6,6 +6,7 @@ import {
   executeGeneration,
   executePostGeneration,
 } from "@/lib/pipeline/orchestrator";
+import { publishToEtsy } from "@/lib/etsy/publisher";
 import type { Opportunity } from "@/types";
 
 const OpportunitySchema = z.object({
@@ -29,7 +30,7 @@ const PipelineActionSchema = z.discriminatedUnion("action", [
     action: z.literal("research"),
     params: z.object({
       niche: z.string().optional(),
-      seedUrls: z.array(z.string().url()).optional(),
+      keywords: z.array(z.string()).optional(),
     }),
   }),
   z.object({
@@ -38,6 +39,12 @@ const PipelineActionSchema = z.discriminatedUnion("action", [
       opportunityId: z.string(),
       reportId: z.string(),
       opportunity: OpportunitySchema,
+    }),
+  }),
+  z.object({
+    action: z.literal("publish"),
+    params: z.object({
+      productId: z.string(),
     }),
   }),
 ]);
@@ -86,6 +93,20 @@ pipelineRouter.post("/", async (req: Request, res: Response) => {
           })
           .catch((err) => {
             console.error("[pipeline] Generation pipeline failed:", err);
+          });
+        return;
+      }
+
+      case "publish": {
+        // Return 202 immediately, then run publishing
+        res.status(202).json({ status: "publishing" });
+
+        publishToEtsy(params.productId)
+          .then((result) => {
+            console.log(`[pipeline] Published to Etsy: ${result.url}`);
+          })
+          .catch((err) => {
+            console.error("[pipeline] Publishing failed:", err);
           });
         return;
       }

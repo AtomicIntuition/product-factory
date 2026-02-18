@@ -140,6 +140,7 @@ function ProductsContent(): React.ReactElement {
               <tr className="border-b border-gray-800 text-gray-400 text-left">
                 <th className="px-4 py-3 font-medium">Title</th>
                 <th className="px-4 py-3 font-medium">Type</th>
+                <th className="px-4 py-3 font-medium">Tags</th>
                 <th className="px-4 py-3 font-medium">Price</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Created</th>
@@ -159,7 +160,12 @@ function ProductsContent(): React.ReactElement {
                     {product.title}
                   </td>
                   <td className="px-4 py-3 text-gray-400">
-                    {product.product_type}
+                    {product.product_type.replace(/_/g, " ")}
+                  </td>
+                  <td className="px-4 py-3 text-gray-400">
+                    <span className={product.tags.length === 13 ? "text-green-400" : "text-yellow-400"}>
+                      {product.tags.length}/13
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-gray-300">
                     {formatCents(product.price_cents)}

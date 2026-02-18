@@ -22,29 +22,32 @@ export type PipelineRunStatus = "running" | "completed" | "failed";
 
 export type ResearchSource = "web_search" | "scrape" | "manual_seed";
 
+export interface EtsyListingData {
+  listing_id: number;
+  title: string;
+  description: string;
+  price_cents: number;
+  currency: string;
+  num_favorers: number;
+  views: number;
+  tags: string[];
+  taxonomy_id: number;
+  url: string;
+  shop_name: string;
+  review_count: number;
+  rating: number | null;
+  is_digital: boolean;
+  sales_estimate?: string;
+  listing_quality?: string;
+}
+
 export interface ResearchRaw {
   id: string;
   run_id: string;
   source: ResearchSource;
   category: string;
-  product_data: GumroadProductData;
+  product_data: EtsyListingData;
   created_at: string;
-}
-
-export interface GumroadProductData {
-  title: string;
-  description: string;
-  price_cents: number;
-  currency: string;
-  rating: number | null;
-  review_count: number;
-  seller_name: string;
-  seller_id: string;
-  url: string;
-  tags: string[];
-  category: string;
-  sales_estimate?: string;
-  listing_quality?: string;
 }
 
 export interface Opportunity {
@@ -75,10 +78,10 @@ export interface ResearchReport {
 export interface QAResult {
   passed: boolean;
   scores: {
-    content_length: number;
-    uniqueness: number;
-    relevance: number;
-    quality: number;
+    structure_quality: number;
+    formula_correctness: number;
+    visual_design: number;
+    usability: number;
     listing_copy: number;
   };
   feedback: string;
@@ -95,14 +98,16 @@ export interface Product {
   content: Record<string, unknown>;
   content_file_url: string | null;
   thumbnail_url: string | null;
+  image_urls: string[];
   tags: string[];
   price_cents: number;
   currency: string;
   thumbnail_prompt: string;
   qa_score: QAResult | null;
   qa_attempts: number;
-  gumroad_id: string | null;
-  gumroad_url: string | null;
+  etsy_listing_id: number | null;
+  etsy_url: string | null;
+  taxonomy_id: number | null;
   status: ProductStatus;
   created_at: string;
   updated_at: string;
@@ -111,7 +116,7 @@ export interface Product {
 export interface Sale {
   id: string;
   product_id: string;
-  gumroad_sale_id: string;
+  etsy_receipt_id: string;
   amount_cents: number;
   currency: string;
   buyer_email: string;
@@ -147,4 +152,67 @@ export interface DashboardSummary {
   products_in_queue: number;
   last_research_run: string | null;
   products_by_status: Record<ProductStatus, number>;
+}
+
+// --- Spreadsheet Spec Types ---
+
+export interface SpreadsheetSpec {
+  sheets: SheetSpec[];
+  color_scheme: {
+    primary: string;
+    secondary: string;
+    accent: string;
+    header_bg: string;
+    header_text: string;
+    alt_row_bg: string;
+  };
+}
+
+export interface SheetSpec {
+  name: string;
+  purpose: string;
+  is_instructions: boolean;
+  columns: {
+    letter: string;
+    header: string;
+    width: number;
+    type: "text" | "number" | "currency" | "date" | "percentage" | "formula";
+    number_format?: string;
+  }[];
+  rows: {
+    row: number;
+    is_header: boolean;
+    is_total: boolean;
+    is_sample: boolean;
+    cells: Record<
+      string,
+      {
+        value?: string | number | null;
+        formula?: string;
+        style?: {
+          bold?: boolean;
+          font_color?: string;
+          bg_color?: string;
+          h_align?: "left" | "center" | "right";
+          border?: "thin" | "medium";
+        };
+      }
+    >;
+  }[];
+  frozen: { rows: number; cols: number };
+  merged_cells: string[];
+  protected_ranges: string[];
+  conditional_formats: { range: string; rule: string; style: object }[];
+}
+
+// --- Etsy Token Types ---
+
+export interface EtsyToken {
+  id: string;
+  access_token: string;
+  refresh_token: string;
+  expires_at: string;
+  scopes: string;
+  created_at: string;
+  updated_at: string;
 }

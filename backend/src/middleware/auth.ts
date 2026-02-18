@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
+import { timingSafeEqual } from "crypto";
 
 export function requireBackendSecret(
   req: Request,
@@ -14,7 +15,11 @@ export function requireBackendSecret(
     return;
   }
 
-  if (secret !== expected) {
+  if (
+    typeof secret !== "string" ||
+    secret.length !== expected.length ||
+    !timingSafeEqual(Buffer.from(secret), Buffer.from(expected))
+  ) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
