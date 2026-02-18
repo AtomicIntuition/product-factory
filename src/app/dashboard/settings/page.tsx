@@ -1,9 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 export default function SettingsPage(): React.ReactElement {
+  return (
+    <Suspense fallback={<div className="text-gray-500">Loading settings...</div>}>
+      <SettingsContent />
+    </Suspense>
+  );
+}
+
+function SettingsContent(): React.ReactElement {
   const searchParams = useSearchParams();
   const connected = searchParams.get("connected");
   const error = searchParams.get("error");

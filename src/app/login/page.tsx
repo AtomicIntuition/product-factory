@@ -1,9 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export default function LoginPage(): React.ReactElement {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-gray-950" />}>
+      <LoginContent />
+    </Suspense>
+  );
+}
+
+function LoginContent(): React.ReactElement {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
